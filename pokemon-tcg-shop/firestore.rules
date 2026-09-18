@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /cards/{cardId} {
+      allow read: if true;                                   // catálogo público
+      allow write: if exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    match /expansions/{id} {
+      allow read: if true;
+      allow write: if exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    match /admins/{uid} {
+      allow read, write: if false; // gestiona esta colección solo desde la consola de Firebase
+    }
+  }
+}
