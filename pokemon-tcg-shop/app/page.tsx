@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, MouseEvent } from "react";
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot } from "firebase/firestore";
+import Link from "next/link";
 
 interface Card {
   id: string;
@@ -189,14 +190,28 @@ export default function CarpetaPublica() {
 
       {/* Header */}
       <div className="border-b border-pink-200 pb-4 flex flex-col md:flex-row md:items-end justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold text-pink-900 flex items-center gap-2">
-            La Carpeta de Zain <span className="text-xl">✨</span>
-          </h2>
-          <p className="mt-1 text-xs text-pink-600">
-            Explora la colección. Filtra por expansión, idioma, brillo y rareza.
-          </p>
-        </div>
+<div>
+    <h2 className="text-2xl font-bold text-pink-900 flex items-center gap-2">
+      Kado Store <span className="text-xl">✨</span>
+    </h2>
+    <p className="mt-1 text-xs text-pink-600">
+      Explora la colección. Filtra por expansión, idioma, brillo y rareza.
+    </p>
+  </div>
+  
+  {/* Sección derecha con métrica y botón de Admin */}
+  <div className="flex items-center gap-3">
+    <span className="text-xs font-mono text-pink-400">
+      {cards.filter((c) => Number(c.stock) > 0).length} cartas disponibles
+    </span>
+    
+    <Link
+      href="/admin/login"
+      className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700 hover:bg-pink-500 hover:text-white hover:border-pink-500 transition-all shadow-xs"
+    >
+      Acceso Admin 🔒
+    </Link>
+  </div>
         <span className="text-xs font-mono text-pink-400">
           {cards.filter((c) => Number(c.stock) > 0).length} cartas disponibles
         </span>
@@ -373,7 +388,7 @@ export default function CarpetaPublica() {
                         <div className="flex flex-wrap justify-center gap-1 mb-2">
                           {foilText && foilText.toLowerCase() !== "normal" && (
                             <span className="inline-block rounded-md bg-pink-100 px-1.5 py-0.5 text-[9px] font-bold text-pink-700 capitalize">
-                               {foilText}
+                              ✨ {foilText}
                             </span>
                           )}
                           {rarityText && (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 import {
   collection,
   addDoc,
@@ -10,7 +10,9 @@ import {
   updateDoc,
   deleteDoc,
 } from "firebase/firestore";
-import { Search, Plus, Minus, Trash2, Sparkles, Loader2 } from "lucide-react";
+import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
+import { Search, Plus, Minus, Trash2, Sparkles, Loader2, LogOut, Package } from "lucide-react";
 
 const renderSafeText = (value) => {
   if (!value) return "";
@@ -22,25 +24,32 @@ const renderSafeText = (value) => {
 };
 
 export default function AdminStock() {
+  const router = useRouter();
   const [cards, setCards] = useState([]);
   const [loadingCards, setLoadingCards] = useState(true);
 
+  const [mode, setMode] = useState("api"); // "api" | "manual"
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchLanguage, setSearchLanguage] = useState("es"); // es, en, ja
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const [selectedApiCard, setSelectedApiCard] = useState(null);
 
-  // Formulario con Idioma, Acabado (Foil) y Precio por defecto
+  // Formulario
   const [formData, setFormData] = useState({
+    name: "",
+    expansion: "",
+    image: "",
+    productType: "carta",
     price: "",
     stock: "1",
-    language: "es", // Idioma por defecto
-    foil: "normal", // Acabado (Normal, Holo, Reverse Holo)
+    language: "es",
+    foil: "normal",
     rarity: "normal",
   });
 
-  // 1. Escuchar la colección de Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, "cards"),
@@ -61,56 +70,94 @@ export default function AdminStock() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Buscar en API de Pokémon TCG
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.push("/");
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    }
+  };
+
+  // Búsqueda integrada con TCGdex API
   const handleApiSearch = async () => {
     if (!searchTerm.trim()) return;
     setIsSearching(true);
     setSearchResults([]);
+    setApiError("");
 
     try {
+      // TCGdex endpoint según idioma elegido: es, en, ja
       const response = await fetch(
-        `https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(
+        `https://api.tcgdex.net/v2/${searchLanguage}/cards?name=${encodeURIComponent(
           searchTerm
-        )}*"`
+        )}`
       );
+      if (!response.ok) throw new Error("Error en la respuesta de TCGdex");
+
       const data = await response.json();
-      setSearchResults(data.data || []);
+      // Mostramos hasta 24 resultados para no saturar la UI
+      setSearchResults(data.slice(0, 24) || []);
     } catch (error) {
-      console.error("Error al buscar en pokemontcg.io:", error);
+      console.error("Error al buscar en TCGdex:", error);
+      setApiError("No se encontraron cartas o hubo un problema con TCGdex.");
     } finally {
       setIsSearching(false);
     }
   };
 
-  const handleSelectCard = (card) => {
-    setSelectedApiCard(card);
-    setSearchResults([]);
+  const handleSelectCard = async (card) => {
+    try {
+      // Pedimos el detalle completo de la carta a TCGdex para obtener imagen e información del set
+      const response = await fetch(
+        `https://api.tcgdex.net/v2/${searchLanguage}/cards/${card.id}`
+      );
+      const detail = await response.json();
+
+      setSelectedApiCard(detail);
+      setSearchResults([]);
+      setFormData((prev) => ({
+        ...prev,
+        name: detail.name,
+        expansion: detail.set?.name || "Desconocida",
+        image: detail.image ? `${detail.image}/high.webp` : "",
+        language: searchLanguage,
+        productType: "carta",
+      }));
+    } catch (error) {
+      console.error("Error al obtener detalle de la carta:", error);
+    }
   };
 
-  // 3. Guardar en Firestore con Soles y variantes
   const handleSaveCard = async (e) => {
     e.preventDefault();
-    if (!selectedApiCard) return;
 
     try {
-      const newCard = {
-        name: selectedApiCard.name,
-        cardNumber: selectedApiCard.number,
-        expansion: selectedApiCard.set?.name || "Desconocida",
-        image: selectedApiCard.images?.small || selectedApiCard.images?.large || "",
+      const isCardType = formData.productType === "carta";
+
+      const newProduct = {
+        name: mode === "api" && selectedApiCard ? selectedApiCard.name : formData.name,
+        cardNumber: isCardType && selectedApiCard ? (selectedApiCard.localId || "N/A") : "N/A",
+        expansion: mode === "api" && selectedApiCard ? (selectedApiCard.set?.name || "Desconocida") : formData.expansion,
+        image: mode === "api" && selectedApiCard ? (selectedApiCard.image ? `${selectedApiCard.image}/high.webp` : "") : formData.image,
+        productType: formData.productType,
         language: formData.language,
-        foil: formData.foil,
-        rarity: formData.rarity,
-        price: parseFloat(formData.price) || 0, // Guardado en Soles (PEN)
+        foil: isCardType ? formData.foil : "N/A",
+        rarity: isCardType ? formData.rarity : "N/A",
+        price: parseFloat(formData.price) || 0,
         stock: parseInt(formData.stock, 10) || 0,
         createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, "cards"), newCard);
+      await addDoc(collection(db, "cards"), newProduct);
 
       setSelectedApiCard(null);
       setSearchTerm("");
       setFormData({
+        name: "",
+        expansion: "",
+        image: "",
+        productType: "carta",
         price: "",
         stock: "1",
         language: "es",
@@ -118,7 +165,7 @@ export default function AdminStock() {
         rarity: "normal",
       });
     } catch (error) {
-      console.error("Error al guardar la carta:", error);
+      console.error("Error al guardar el producto:", error);
     }
   };
 
@@ -143,90 +190,194 @@ export default function AdminStock() {
   };
 
   const handleDeleteCard = async (cardId) => {
-    if (!confirm("¿Eliminar esta carta del inventario?")) return;
+    if (!confirm("¿Eliminar este ítem del inventario?")) return;
     try {
       await deleteDoc(doc(db, "cards", cardId));
     } catch (error) {
-      console.error("Error eliminando carta:", error);
+      console.error("Error eliminando ítem:", error);
     }
   };
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-4 md:p-8">
-      <div className="border-b border-pink-200 pb-4">
-        <h1 className="text-2xl font-bold text-pink-900 flex items-center gap-2">
-          <Sparkles className="text-pink-500" /> Panel de Administración - Inventario
-        </h1>
-        <p className="text-xs text-pink-600 mt-1">
-          Busca cartas, asigna precio en Soles (S/), idioma y acabado (Holo/Reverse).
-        </p>
-      </div>
-
-      {/* SECCIÓN 1: Buscar y Guardar */}
-      <div className="rounded-2xl border border-pink-200 bg-pink-50/40 p-5 shadow-sm space-y-4">
-        <h2 className="text-sm font-semibold text-pink-800">1. Buscar Carta en API Oficial</h2>
-        
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleApiSearch()}
-            placeholder="Ej: Charizard, Gardevoir, Pikachu..."
-            className="flex-1 rounded-xl border border-pink-200 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
-          />
-          <button
-            type="button"
-            onClick={handleApiSearch}
-            disabled={isSearching}
-            className="flex items-center gap-1.5 rounded-xl bg-pink-500 px-4 py-2 text-xs font-semibold text-white hover:bg-pink-600 disabled:opacity-50"
-          >
-            {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-            Buscar
-          </button>
+      {/* Header */}
+      <div className="border-b border-pink-200 pb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-pink-900 flex items-center gap-2">
+            <Sparkles className="text-pink-500" /> Panel de Administración - Inventario
+          </h1>
+          <p className="text-xs text-pink-600 mt-1">
+            Gestión de cartas (vía TCGdex ES/EN/JA) y productos sellados.
+          </p>
         </div>
 
-        {searchResults.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 max-h-60 overflow-y-auto p-2 bg-white rounded-xl border border-pink-100">
-            {searchResults.map((card) => (
-              <div
-                key={card.id}
-                onClick={() => handleSelectCard(card)}
-                className="cursor-pointer rounded-lg border border-pink-100 p-2 hover:border-pink-400 hover:bg-pink-50 transition-all text-center"
-              >
-                <img src={card.images.small} alt={card.name} className="h-28 object-contain mx-auto" />
-                <p className="font-bold text-[11px] text-gray-800 line-clamp-1 mt-1">{card.name}</p>
-                <p className="text-[10px] text-gray-500">{card.set.name} - #{card.number}</p>
-              </div>
-            ))}
-          </div>
-        )}
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 rounded-xl border border-pink-200 bg-white px-3 py-2 text-xs font-semibold text-pink-700 hover:bg-pink-50 hover:text-red-600 hover:border-red-200 transition-all shadow-xs"
+        >
+          <LogOut size={14} />
+          Cerrar sesión
+        </button>
+      </div>
 
-        {selectedApiCard && (
-          <form onSubmit={handleSaveCard} className="mt-4 rounded-xl border border-pink-300 bg-white p-4 space-y-4">
-            <div className="flex items-center justify-between border-b border-pink-100 pb-2">
-              <span className="text-xs font-bold text-pink-700">Carta seleccionada:</span>
+      {/* SECCIÓN 1: Registrar Producto */}
+      <div className="rounded-2xl border border-pink-200 bg-pink-50/40 p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+          <h2 className="text-sm font-semibold text-pink-800">1. Agregar Producto al Inventario</h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setMode("api"); setSelectedApiCard(null); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                mode === "api"
+                  ? "bg-pink-500 text-white border-pink-500"
+                  : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50"
+              }`}
+            >
+              Buscar en TCGdex
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode("manual"); setSelectedApiCard(null); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                mode === "manual"
+                  ? "bg-pink-500 text-white border-pink-500"
+                  : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50"
+              }`}
+            >
+              Registro Manual (Sellados)
+            </button>
+          </div>
+        </div>
+
+        {/* MODO API (TCGdex) */}
+        {mode === "api" && (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <select
+                value={searchLanguage}
+                onChange={(e) => setSearchLanguage(e.target.value)}
+                className="rounded-xl border border-pink-200 px-3 py-2 text-xs font-semibold bg-white text-pink-900 outline-none focus:ring-2 focus:ring-pink-300"
+              >
+                <option value="es">Español (ES)</option>
+                <option value="en">Inglés (EN)</option>
+                <option value="ja">Japonés (JA)</option>
+              </select>
+
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleApiSearch()}
+                placeholder="Buscar por nombre (Ej: Pikachu, Charizard...)"
+                className="flex-1 rounded-xl border border-pink-200 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+              />
               <button
                 type="button"
-                onClick={() => setSelectedApiCard(null)}
-                className="text-[11px] text-gray-400 hover:text-red-500"
+                onClick={handleApiSearch}
+                disabled={isSearching}
+                className="flex items-center gap-1.5 rounded-xl bg-pink-500 px-4 py-2 text-xs font-semibold text-white hover:bg-pink-600 disabled:opacity-50"
               >
-                Cancelar
+                {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                Buscar
               </button>
             </div>
 
-            <div className="flex gap-4 items-center">
-              <img src={selectedApiCard.images.small} alt={selectedApiCard.name} className="h-28 object-contain" />
-              <div>
-                <p className="font-bold text-sm text-gray-800">{selectedApiCard.name}</p>
-                <p className="text-xs text-gray-500">Expansión: {selectedApiCard.set.name}</p>
-                <p className="text-xs text-gray-500">Número: #{selectedApiCard.number}</p>
-              </div>
-            </div>
+            {apiError && <p className="text-xs text-red-500 mt-1">{apiError}</p>}
 
-            {/* Opciones del Formulario */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 text-xs">
-              {/* Precio en Soles */}
+            {searchResults.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 max-h-60 overflow-y-auto p-2 bg-white rounded-xl border border-pink-100">
+                {searchResults.map((card) => (
+                  <div
+                    key={card.id}
+                    onClick={() => handleSelectCard(card)}
+                    className="cursor-pointer rounded-lg border border-pink-100 p-2 hover:border-pink-400 hover:bg-pink-50 transition-all text-center flex flex-col justify-between"
+                  >
+                    {card.image ? (
+                      <img src={`${card.image}/low.webp`} alt={card.name} className="h-28 object-contain mx-auto" />
+                    ) : (
+                      <div className="h-28 flex items-center justify-center bg-gray-50 text-[10px] text-gray-400">Sin Imagen</div>
+                    )}
+                    <div>
+                      <p className="font-bold text-[11px] text-gray-800 line-clamp-1 mt-1">{card.name}</p>
+                      <p className="text-[10px] text-gray-500">#{card.localId || "N/A"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MODO MANUAL O CARTA SELECCIONADA */}
+        {(mode === "manual" || selectedApiCard) && (
+          <form onSubmit={handleSaveCard} className="rounded-xl border border-pink-300 bg-white p-4 space-y-4">
+            {selectedApiCard && (
+              <div className="flex items-center gap-3 border-b border-pink-100 pb-3">
+                {selectedApiCard.image && (
+                  <img src={`${selectedApiCard.image}/high.webp`} alt={selectedApiCard.name} className="h-16 object-contain" />
+                )}
+                <div>
+                  <p className="font-bold text-xs text-gray-800">{selectedApiCard.name}</p>
+                  <p className="text-[11px] text-gray-500">{selectedApiCard.set?.name} • #{selectedApiCard.localId}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:grid-cols-6 text-xs">
+              {mode === "manual" && (
+                <>
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-gray-700 mb-1">Nombre del Producto</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Elite Trainer Box - 151"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Expansión / Set</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Scarlet & Violet"
+                      value={formData.expansion}
+                      onChange={(e) => setFormData({ ...formData, expansion: e.target.value })}
+                      className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-gray-700 mb-1">URL Imagen (Opcional)</label>
+                    <input
+                      type="url"
+                      placeholder="https://..."
+                      value={formData.image}
+                      onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                      className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">Tipo</label>
+                <select
+                  value={formData.productType}
+                  onChange={(e) => setFormData({ ...formData, productType: e.target.value })}
+                  className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800 font-medium"
+                >
+                  <option value="carta">Carta Suelta</option>
+                  <option value="etb">ETB</option>
+                  <option value="booster_bundle">Booster Bundle</option>
+                  <option value="booster_box">Booster Box</option>
+                  <option value="pack">Sobre Suelto</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">Precio (S/)</label>
                 <input
@@ -235,12 +386,11 @@ export default function AdminStock() {
                   required
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  placeholder="Ej: 15.00"
+                  placeholder="Ej: 180.00"
                   className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
                 />
               </div>
 
-              {/* Stock */}
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">Stock</label>
                 <input
@@ -253,13 +403,12 @@ export default function AdminStock() {
                 />
               </div>
 
-              {/* Selector de Idioma */}
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">Idioma</label>
                 <select
                   value={formData.language}
                   onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                  className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                  className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800 font-semibold"
                 >
                   <option value="es">Español (ES)</option>
                   <option value="en">Inglés (EN)</option>
@@ -267,40 +416,42 @@ export default function AdminStock() {
                 </select>
               </div>
 
-              {/* Selector de Brillo / Acabado */}
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Acabado / Brillo</label>
-                <select
-                  value={formData.foil}
-                  onChange={(e) => setFormData({ ...formData, foil: e.target.value })}
-                  className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
-                >
-                  <option value="normal">Normal / Regular</option>
-                  <option value="holo">Holo</option>
-                  <option value="reverse">Reverse Holo</option>
-                </select>
-              </div>
+              {formData.productType === "carta" && (
+                <>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Acabado</label>
+                    <select
+                      value={formData.foil}
+                      onChange={(e) => setFormData({ ...formData, foil: e.target.value })}
+                      className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="holo">Holo</option>
+                      <option value="reverse">Reverse Holo</option>
+                    </select>
+                  </div>
 
-              {/* Rareza */}
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Categoría Rareza</label>
-                <select
-                  value={formData.rarity}
-                  onChange={(e) => setFormData({ ...formData, rarity: e.target.value })}
-                  className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
-                >
-                  <option value="normal">Normal</option>
-                  <option value="fullart">Full Art</option>
-                  <option value="ir">Illustration Rare (IR)</option>
-                  <option value="sir">Special Illus. Rare (SIR)</option>
-                  <option value="secreta">Secreta / Gold</option>
-                </select>
-              </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Rareza</label>
+                    <select
+                      value={formData.rarity}
+                      onChange={(e) => setFormData({ ...formData, rarity: e.target.value })}
+                      className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="fullart">Full Art</option>
+                      <option value="ir">Illustration Rare (IR)</option>
+                      <option value="sir">Special Illus. Rare (SIR)</option>
+                      <option value="secreta">Secreta / Gold</option>
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
 
             <button
               type="submit"
-              className="w-full rounded-xl bg-pink-500 py-2 text-xs font-bold text-white hover:bg-pink-600"
+              className="w-full rounded-xl bg-pink-500 py-2 text-xs font-bold text-white hover:bg-pink-600 transition-colors"
             >
               Guardar en Inventario
             </button>
@@ -308,84 +459,104 @@ export default function AdminStock() {
         )}
       </div>
 
-      {/* SECCIÓN 2: Render de Cartas en Inventario */}
+      {/* SECCIÓN 2: Render de Ítems en Inventario */}
       <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-pink-800">2. Cartas en Inventario ({cards.length})</h2>
+        <h2 className="text-sm font-semibold text-pink-800">2. Productos en Inventario ({cards.length})</h2>
 
         {loadingCards ? (
           <p className="text-xs text-gray-400">Cargando inventario...</p>
         ) : cards.length === 0 ? (
-          <p className="text-xs text-gray-400 italic">No hay cartas registradas aún.</p>
+          <p className="text-xs text-gray-400 italic">No hay productos registrados aún.</p>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {cards.map((c) => (
-              <div
-                key={c.id}
-                className="flex flex-col justify-between rounded-xl border border-pink-100 bg-white p-3 shadow-sm hover:border-pink-300"
-              >
-                <div className="flex gap-3">
-                  <img src={typeof c.image === "string" ? c.image : ""} alt={renderSafeText(c.name)} className="h-24 object-contain" />
-                  <div className="space-y-1 text-xs">
-                    <p className="font-bold text-gray-800 line-clamp-1">{renderSafeText(c.name)}</p>
-                    <p className="text-[10px] text-gray-400">#{renderSafeText(c.cardNumber)} • {renderSafeText(c.expansion)}</p>
-                    
-                    {/* Tags de Idioma y Brillo */}
-                    <div className="flex flex-wrap gap-1 text-[9px] uppercase font-semibold mt-1">
-                      <span className="rounded bg-pink-100 px-1.5 py-0.5 text-pink-700">
-                        {renderSafeText(c.language)}
-                      </span>
-                      <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
-                        {renderSafeText(c.foil)}
-                      </span>
-                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
-                        {renderSafeText(c.rarity)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+            {cards.map((c) => {
+              const isCard = !c.productType || c.productType === "carta";
 
-                <div className="mt-3 border-t border-pink-50 pt-2 space-y-2">
-                  {/* Edición de precio en Soles */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 font-medium">Precio (S/):</span>
-                    <input
-                      type="number"
-                      step="0.10"
-                      defaultValue={typeof c.price === "number" ? c.price : parseFloat(renderSafeText(c.price)) || 0}
-                      onBlur={(e) => handleUpdatePrice(c.id, e.target.value)}
-                      className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right font-bold text-pink-600 outline-none focus:border-pink-400"
-                    />
-                  </div>
+              return (
+                <div
+                  key={c.id}
+                  className="flex flex-col justify-between rounded-xl border border-pink-100 bg-white p-3 shadow-sm hover:border-pink-300"
+                >
+                  <div className="flex gap-3">
+                    {c.image ? (
+                      <img src={c.image} alt={renderSafeText(c.name)} className="h-24 w-16 object-contain" />
+                    ) : (
+                      <div className="h-24 w-16 bg-pink-50 rounded flex items-center justify-center text-pink-300">
+                        <Package size={24} />
+                      </div>
+                    )}
+                    <div className="space-y-1 text-xs flex-1">
+                      <p className="font-bold text-gray-800 line-clamp-2">{renderSafeText(c.name)}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {isCard ? `#${renderSafeText(c.cardNumber)} • ` : ""}
+                        {renderSafeText(c.expansion)}
+                      </p>
+                      
+                      <div className="flex flex-wrap gap-1 text-[9px] uppercase font-semibold mt-1">
+                        <span className="rounded bg-pink-100 px-1.5 py-0.5 text-pink-700 font-bold">
+                          {renderSafeText(c.language)}
+                        </span>
 
-                  {/* Modificación de stock */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 font-medium">Stock:</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, -1)}
-                        className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
-                      >
-                        <Minus size={12} />
-                      </button>
-                      <span className="font-bold text-gray-800">{Number(c.stock) || 0}</span>
-                      <button
-                        onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, 1)}
-                        className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
-                      >
-                        <Plus size={12} />
-                      </button>
+                        {!isCard ? (
+                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800 flex items-center gap-0.5">
+                            <Package size={10} />
+                            {renderSafeText(c.productType)}
+                          </span>
+                        ) : (
+                          <>
+                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
+                              {renderSafeText(c.foil)}
+                            </span>
+                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                              {renderSafeText(c.rarity)}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteCard(c.id)}
-                    className="flex w-full items-center justify-center gap-1 rounded py-1 text-[10px] text-red-500 hover:bg-red-50"
-                  >
-                    <Trash2 size={12} /> Eliminar carta
-                  </button>
+                  <div className="mt-3 border-t border-pink-50 pt-2 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500 font-medium">Precio (S/):</span>
+                      <input
+                        type="number"
+                        step="0.10"
+                        defaultValue={typeof c.price === "number" ? c.price : parseFloat(renderSafeText(c.price)) || 0}
+                        onBlur={(e) => handleUpdatePrice(c.id, e.target.value)}
+                        className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right font-bold text-pink-600 outline-none focus:border-pink-400"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500 font-medium">Stock:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, -1)}
+                          className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
+                        >
+                          <Minus size={12} />
+                        </button>
+                        <span className="font-bold text-gray-800">{Number(c.stock) || 0}</span>
+                        <button
+                          onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, 1)}
+                          className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDeleteCard(c.id)}
+                      className="flex w-full items-center justify-center gap-1 rounded py-1 text-[10px] text-red-500 hover:bg-red-50"
+                    >
+                      <Trash2 size={12} /> Eliminar ítem
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
