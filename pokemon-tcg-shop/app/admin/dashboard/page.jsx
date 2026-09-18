@@ -50,6 +50,7 @@ export default function AdminStock() {
     rarity: "normal",
   });
 
+  // Cargar inventario desde Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, "cards"),
@@ -70,6 +71,79 @@ export default function AdminStock() {
     return () => unsubscribe();
   }, []);
 
+// Autobúsqueda optimizada con soporte para cartas secretas/IR y IDs de Set
+useEffect(() => {
+  if (mode !== "api" || !searchTerm.trim()) {
+    setSearchResults([]);
+    setApiError("");
+    setIsSearching(false);
+    return;
+  }
+
+  const timer = setTimeout(async () => {
+    setIsSearching(true);
+    setApiError("");
+
+    try {
+      const cleanQuery = searchTerm.trim().toLowerCase();
+      let results = [];
+
+      // 1. Intentar buscar por ID exacto de TCGdex (ej: me02.5-226 o 226)
+      try {
+        const directRes = await fetch(
+          `https://api.tcgdex.net/v2/${searchLanguage}/cards/${encodeURIComponent(cleanQuery)}`
+        );
+        if (directRes.ok) {
+          const directCard = await directRes.json();
+          if (directCard && !directCard.error) {
+            results.push(directCard);
+          }
+        }
+      } catch (e) {
+        // Ignorar error si no es un ID válido
+      }
+
+      // 2. Si no es un ID único, buscar por coincidencia de nombre
+      if (results.length === 0) {
+        let response = await fetch(
+          `https://api.tcgdex.net/v2/${searchLanguage}/cards?name=${encodeURIComponent(cleanQuery)}`
+        );
+
+        if (response.ok) {
+          let data = await response.json();
+
+          // Fallback al inglés si no encuentra en español/japonés
+          if ((!data || data.length === 0) && searchLanguage !== "en") {
+            const fallbackRes = await fetch(
+              `https://api.tcgdex.net/v2/en/cards?name=${encodeURIComponent(cleanQuery)}`
+            );
+            if (fallbackRes.ok) {
+              data = await fallbackRes.json();
+            }
+          }
+
+          results = data || [];
+        }
+      }
+
+      if (results.length === 0) {
+        setApiError("No se encontró la carta en TCGdex.");
+        setSearchResults([]);
+      } else {
+        // Aumentamos el corte a 80 resultados para incluir las secretas/alt-arts
+        setSearchResults(results.slice(0, 80));
+      }
+    } catch (error) {
+      console.error("Error al buscar en TCGdex:", error);
+      setApiError("Hubo un problema de conexión con TCGdex.");
+    } finally {
+      setIsSearching(false);
+    }
+  }, 400);
+
+  return () => clearTimeout(timer);
+}, [searchTerm, searchLanguage, mode]);
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -79,46 +153,26 @@ export default function AdminStock() {
     }
   };
 
-  // Búsqueda integrada con TCGdex API
-  const handleApiSearch = async () => {
-    if (!searchTerm.trim()) return;
-    setIsSearching(true);
-    setSearchResults([]);
-    setApiError("");
-
-    try {
-      // TCGdex endpoint según idioma elegido: es, en, ja
-      const response = await fetch(
-        `https://api.tcgdex.net/v2/${searchLanguage}/cards?name=${encodeURIComponent(
-          searchTerm
-        )}`
-      );
-      if (!response.ok) throw new Error("Error en la respuesta de TCGdex");
-
-      const data = await response.json();
-      // Mostramos hasta 24 resultados para no saturar la UI
-      setSearchResults(data.slice(0, 24) || []);
-    } catch (error) {
-      console.error("Error al buscar en TCGdex:", error);
-      setApiError("No se encontraron cartas o hubo un problema con TCGdex.");
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
   const handleSelectCard = async (card) => {
     try {
-      // Pedimos el detalle completo de la carta a TCGdex para obtener imagen e información del set
       const response = await fetch(
         `https://api.tcgdex.net/v2/${searchLanguage}/cards/${card.id}`
       );
-      const detail = await response.json();
+      let detail = await response.json();
+
+      // Si no encuentra el detalle en el idioma actual, intenta en inglés
+      if (!detail || detail.error) {
+        const fallbackRes = await fetch(
+          `https://api.tcgdex.net/v2/en/cards/${card.id}`
+        );
+        detail = await fallbackRes.json();
+      }
 
       setSelectedApiCard(detail);
       setSearchResults([]);
       setFormData((prev) => ({
         ...prev,
-        name: detail.name,
+        name: detail.name || card.name,
         expansion: detail.set?.name || "Desconocida",
         image: detail.image ? `${detail.image}/high.webp` : "",
         language: searchLanguage,
@@ -250,7 +304,7 @@ export default function AdminStock() {
           </div>
         </div>
 
-        {/* MODO API (TCGdex) */}
+        {/* MODO API (TCGdex Autobúsqueda) */}
         {mode === "api" && (
           <div className="space-y-3">
             <div className="flex gap-2">
@@ -264,23 +318,20 @@ export default function AdminStock() {
                 <option value="ja">Japonés (JA)</option>
               </select>
 
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleApiSearch()}
-                placeholder="Buscar por nombre (Ej: Pikachu, Charizard...)"
-                className="flex-1 rounded-xl border border-pink-200 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
-              />
-              <button
-                type="button"
-                onClick={handleApiSearch}
-                disabled={isSearching}
-                className="flex items-center gap-1.5 rounded-xl bg-pink-500 px-4 py-2 text-xs font-semibold text-white hover:bg-pink-600 disabled:opacity-50"
-              >
-                {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                Buscar
-              </button>
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Escribe para buscar automáticamente (Ej: Pikachu, Charizard...)"
+                  className="w-full rounded-xl border border-pink-200 px-3 py-2 pr-8 text-xs outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                />
+                {isSearching && (
+                  <div className="absolute right-2.5 top-2.5">
+                    <Loader2 size={14} className="animate-spin text-pink-500" />
+                  </div>
+                )}
+              </div>
             </div>
 
             {apiError && <p className="text-xs text-red-500 mt-1">{apiError}</p>}
