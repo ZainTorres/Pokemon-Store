@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { db, auth } from "@/lib/firebase";
 import {
   collection,
@@ -48,6 +49,7 @@ export default function AdminStock() {
     language: "es",
     foil: "normal",
     rarity: "normal",
+    hasStamp: false, 
   });
 
   // Cargar inventario desde Firestore
@@ -200,6 +202,7 @@ useEffect(() => {
         rarity: isCardType ? formData.rarity : "N/A",
         price: parseFloat(formData.price) || 0,
         stock: parseInt(formData.stock, 10) || 0,
+        hasStamp: formData.hasStamp || false, // <- Guardar en Firestore
         createdAt: new Date().toISOString(),
       };
 
@@ -217,6 +220,7 @@ useEffect(() => {
         language: "es",
         foil: "normal",
         rarity: "normal",
+        hasStamp: false, // <- Resetear aquí
       });
     } catch (error) {
       console.error("Error al guardar el producto:", error);
@@ -252,27 +256,45 @@ useEffect(() => {
     }
   };
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-8 p-4 md:p-8">
-      {/* Header */}
-      <div className="border-b border-pink-200 pb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-pink-900 flex items-center gap-2">
-            <Sparkles className="text-pink-500" /> Panel de Administración - Inventario
-          </h1>
-          <p className="text-xs text-pink-600 mt-1">
-            Gestión de cartas (vía TCGdex ES/EN/JA) y productos sellados.
-          </p>
-        </div>
+return (
+    <div className="min-h-screen bg-pink-50/20">
+      {/* Header de Administración Flotante */}
+      <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/80 border-b border-pink-100/80 shadow-xs transition-all">
+        <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 flex items-center justify-between gap-4">
+          
+          {/* Logo + Títulos */}
+          <div className="flex items-center gap-3">
+            <Link href="/" className="shrink-0 group" title="Ir al catálogo público">
+              <img
+                src="/logo.svg"
+                alt="Kado Store Logo"
+                className="h-9 md:h-11 w-auto object-contain transition-transform group-hover:scale-105"
+              />
+            </Link>
 
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 rounded-xl border border-pink-200 bg-white px-3 py-2 text-xs font-semibold text-pink-700 hover:bg-pink-50 hover:text-red-600 hover:border-red-200 transition-all shadow-xs"
-        >
-          <LogOut size={14} />
-          Cerrar sesión
-        </button>
-      </div>
+            <div className="border-l border-pink-200/60 pl-3">
+              <h1 className="text-base sm:text-lg font-extrabold text-pink-900 flex items-center gap-1.5 leading-tight">
+                <Sparkles className="text-pink-500 h-4 w-4 shrink-0" />
+                <span>Panel de Administración</span>
+              </h1>
+              <p className="text-[11px] text-pink-600 hidden sm:block">
+                Gestión de cartas (vía TCGdex ES/EN/JA) y productos sellados.
+              </p>
+            </div>
+          </div>
+
+          {/* Botón Cerrar Sesión */}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 rounded-full border border-pink-200/80 bg-pink-50/50 px-3.5 py-1.5 text-xs font-semibold text-pink-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all shadow-xs shrink-0 cursor-pointer"
+          >
+            <LogOut size={14} />
+            <span className="hidden sm:inline">Cerrar sesión</span>
+          </button>
+        </div>
+      </header>
+      {/* Contenido Principal */}
+      <main className="mx-auto max-w-6xl space-y-8 p-4 md:p-8"></main>
 
       {/* SECCIÓN 1: Registrar Producto */}
       <div className="rounded-2xl border border-pink-200 bg-pink-50/40 p-5 shadow-sm space-y-4">
@@ -467,7 +489,7 @@ useEffect(() => {
                 </select>
               </div>
 
-              {formData.productType === "carta" && (
+{formData.productType === "carta" && (
                 <>
                   <div>
                     <label className="block font-semibold text-gray-700 mb-1">Acabado</label>
@@ -496,6 +518,20 @@ useEffect(() => {
                       <option value="secreta">Secreta / Gold</option>
                     </select>
                   </div>
+
+                  {/* 📍 AQUÍ PEGAS EL CHECKBOX */}
+                  <div className="flex items-center gap-2 pt-2 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      id="hasStamp"
+                      checked={formData.hasStamp}
+                      onChange={(e) => setFormData({ ...formData, hasStamp: e.target.checked })}
+                      className="h-4 w-4 rounded border-pink-300 text-pink-500 focus:ring-pink-300 cursor-pointer"
+                    />
+                    <label htmlFor="hasStamp" className="text-xs font-semibold text-gray-700 cursor-pointer select-none">
+                      ¿Incluye sello de Prize Pack?
+                    </label>
+                  </div>
                 </>
               )}
             </div>
@@ -510,100 +546,114 @@ useEffect(() => {
         )}
       </div>
 
-      {/* SECCIÓN 2: Render de Ítems en Inventario */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-pink-800">2. Productos en Inventario ({cards.length})</h2>
+{/* SECCIÓN 2: Render de Ítems en Inventario */}
+<div className="space-y-4">
+  <h2 className="text-sm font-semibold text-pink-800">2. Productos en Inventario ({cards.length})</h2>
 
-        {loadingCards ? (
-          <p className="text-xs text-gray-400">Cargando inventario...</p>
-        ) : cards.length === 0 ? (
-          <p className="text-xs text-gray-400 italic">No hay productos registrados aún.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {cards.map((c) => {
-              const isCard = !c.productType || c.productType === "carta";
+  {loadingCards ? (
+    <p className="text-xs text-gray-400">Cargando inventario...</p>
+  ) : cards.length === 0 ? (
+    <p className="text-xs text-gray-400 italic">No hay productos registrados aún.</p>
+  ) : (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+      {cards.map((c) => {
+        const isCard = !c.productType || c.productType === "carta";
 
-              return (
-                <div
-                  key={c.id}
-                  className="flex flex-col justify-between rounded-xl border border-pink-100 bg-white p-3 shadow-sm hover:border-pink-300"
-                >
-                  <div className="flex gap-3">
-                    {c.image ? (
-                      <img src={c.image} alt={renderSafeText(c.name)} className="h-24 w-16 object-contain" />
-                    ) : (
-                      <div className="h-24 w-16 bg-pink-50 rounded flex items-center justify-center text-pink-300">
-                        <Package size={24} />
-                      </div>
-                    )}
-                    <div className="space-y-1 text-xs flex-1">
-                      <p className="font-bold text-gray-800 line-clamp-2">{renderSafeText(c.name)}</p>
-                      <p className="text-[10px] text-gray-400">
-                        {isCard ? `#${renderSafeText(c.cardNumber)} • ` : ""}
-                        {renderSafeText(c.expansion)}
-                      </p>
-                      
-                      <div className="flex flex-wrap gap-1 text-[9px] uppercase font-semibold mt-1">
-                        <span className="rounded bg-pink-100 px-1.5 py-0.5 text-pink-700 font-bold">
-                          {renderSafeText(c.language)}
-                        </span>
-
-                        {!isCard ? (
-                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800 flex items-center gap-0.5">
-                            <Package size={10} />
-                            {renderSafeText(c.productType)}
-                          </span>
-                        ) : (
-                          <>
-                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
-                              {renderSafeText(c.foil)}
-                            </span>
-                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
-                              {renderSafeText(c.rarity)}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
+        return (
+          <div
+            key={c.id}
+            className="flex flex-col justify-between rounded-xl border border-pink-100 bg-white p-3 shadow-sm hover:border-pink-300"
+          >
+            <div className="flex gap-3">
+              
+              {/* 📍 CONTENEDOR DE IMAGEN CON SELLO SUPERPUESTO */}
+              <div className="relative shrink-0">
+                {c.image ? (
+                  <img src={c.image} alt={renderSafeText(c.name)} className="h-24 w-16 object-contain" />
+                ) : (
+                  <div className="h-24 w-16 bg-pink-50 rounded flex items-center justify-center text-pink-300">
+                    <Package size={24} />
                   </div>
+                )}
 
-                  <div className="mt-3 border-t border-pink-50 pt-2 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500 font-medium">Precio (S/):</span>
-                      <input
-                        type="number"
-                        step="0.10"
-                        defaultValue={typeof c.price === "number" ? c.price : parseFloat(renderSafeText(c.price)) || 0}
-                        onBlur={(e) => handleUpdatePrice(c.id, e.target.value)}
-                        className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right font-bold text-pink-600 outline-none focus:border-pink-400"
-                      />
-                    </div>
+                {/* Sello PNG superpuesto */}
+                {c.hasStamp && (
+                  <img
+                    src="/tu-sello.png" // Cambia "tu-sello.png" por la ruta de tu sello
+                    alt="Sello"
+                    className="absolute -top-1 -right-1 h-6 w-6 object-contain drop-shadow-sm pointer-events-none"
+                  />
+                )}
+              </div>
 
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500 font-medium">Stock:</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, -1)}
-                          className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
-                        >
-                          <Minus size={12} />
-                        </button>
-                        <span className="font-bold text-gray-800">{Number(c.stock) || 0}</span>
-                        <button
-                          onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, 1)}
-                          className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
-                        >
-                          <Plus size={12} />
-                        </button>
-                      </div>
-                    </div>
+              <div className="space-y-1 text-xs flex-1">
+                <p className="font-bold text-gray-800 line-clamp-2">{renderSafeText(c.name)}</p>
+                <p className="text-[10px] text-gray-400">
+                  {isCard ? `#${renderSafeText(c.cardNumber)} • ` : ""}
+                  {renderSafeText(c.expansion)}
+                </p>
+                
+                <div className="flex flex-wrap gap-1 text-[9px] uppercase font-semibold mt-1">
+                  <span className="rounded bg-pink-100 px-1.5 py-0.5 text-pink-700 font-bold">
+                    {renderSafeText(c.language)}
+                  </span>
 
-                    <button
-                      onClick={() => handleDeleteCard(c.id)}
-                      className="flex w-full items-center justify-center gap-1 rounded py-1 text-[10px] text-red-500 hover:bg-red-50"
-                    >
-                      <Trash2 size={12} /> Eliminar ítem
-                    </button>
+                  {!isCard ? (
+                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800 flex items-center gap-0.5">
+                      <Package size={10} />
+                      {renderSafeText(c.productType)}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
+                        {renderSafeText(c.foil)}
+                      </span>
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                        {renderSafeText(c.rarity)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 border-t border-pink-50 pt-2 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500 font-medium">Precio (S/):</span>
+                <input
+                  type="number"
+                  step="0.10"
+                  defaultValue={typeof c.price === "number" ? c.price : parseFloat(renderSafeText(c.price)) || 0}
+                  onBlur={(e) => handleUpdatePrice(c.id, e.target.value)}
+                  className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right font-bold text-pink-600 outline-none focus:border-pink-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500 font-medium">Stock:</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, -1)}
+                    className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
+                  >
+                    <Minus size={12} />
+                  </button>
+                  <span className="font-bold text-gray-800">{Number(c.stock) || 0}</span>
+                  <button
+                    onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, 1)}
+                    className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleDeleteCard(c.id)}
+                className="flex w-full items-center justify-center gap-1 rounded py-1 text-[10px] text-red-500 hover:bg-red-50"
+              >
+                <Trash2 size={12} /> Eliminar ítem
+              </button>
                   </div>
                 </div>
               );

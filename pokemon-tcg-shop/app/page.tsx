@@ -16,6 +16,7 @@ interface Card {
   price?: any;
   stock?: any;
   image?: any;
+  hasStamp?: boolean; // 📍 Se añade el soporte para el campo hasStamp
 }
 
 const renderSafeText = (value: any): string => {
@@ -29,7 +30,6 @@ const renderSafeText = (value: any): string => {
   return "";
 };
 
-// Función helper para obtener el emoji de bandera según idioma
 const getLangFlag = (langStr: string): string => {
   const cleanLang = langStr.trim().toLowerCase();
   switch (cleanLang) {
@@ -188,34 +188,52 @@ export default function CarpetaPublica() {
         }
       `}</style>
 
-      {/* Header */}
-      <div className="border-b border-pink-200 pb-4 flex flex-col md:flex-row md:items-end justify-between gap-2">
-<div>
-    <h2 className="text-2xl font-bold text-pink-900 flex items-center gap-2">
-      Kado Store <span className="text-xl">✨</span>
-    </h2>
-    <p className="mt-1 text-xs text-pink-600">
-      Explora la colección. Filtra por expansión, idioma, brillo y rareza.
-    </p>
-  </div>
-  
-  {/* Sección derecha con métrica y botón de Admin */}
-  <div className="flex items-center gap-3">
-    <span className="text-xs font-mono text-pink-400">
-      {cards.filter((c) => Number(c.stock) > 0).length} cartas disponibles
-    </span>
+{/* Header Flotante y Moderno */}
+<header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/80 border-b border-pink-100/80 shadow-xs transition-all">
+  <div className="mx-auto max-w-7xl px-4 py-2.5 sm:px-6 flex items-center justify-between gap-3 md:gap-6">
     
-    <Link
-      href="/admin/login"
-      className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-semibold text-pink-700 hover:bg-pink-500 hover:text-white hover:border-pink-500 transition-all shadow-xs"
-    >
-      Acceso Admin 🔒
+    {/* Logo con Link a Home */}
+    <Link href="/" className="flex items-center gap-2 shrink-0 group">
+      <img
+        src="\logo.svg"
+        alt="Kado Store Logo"
+        className="h-8 md:h-10 w-auto object-contain transition-transform group-hover:scale-105"
+      />
+      <span className="hidden sm:inline-block text-base font-extrabold text-pink-900 tracking-tight">
+        
+      </span>
     </Link>
-  </div>
-        <span className="text-xs font-mono text-pink-400">
-          {cards.filter((c) => Number(c.stock) > 0).length} cartas disponibles
-        </span>
+
+    {/* Buscador Integrado en la Barra */}
+    <div className="flex-1 max-w-md relative">
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-pink-400">
+        🔍
       </div>
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Buscar carta o número…"
+        className="w-full rounded-full border border-pink-200/80 bg-pink-50/40 pl-9 pr-4 py-1.5 text-xs text-gray-800 placeholder-pink-300 outline-none focus:border-pink-500 focus:bg-white focus:ring-2 focus:ring-pink-200/50 transition-all"
+      />
+    </div>
+
+    {/* Acciones e Indicadores */}
+    <div className="flex items-center gap-2 md:gap-3 shrink-0">
+      <span className="hidden lg:inline-flex items-center gap-1.5 rounded-full bg-pink-50 px-2.5 py-1 text-[11px] font-mono font-medium text-pink-600 border border-pink-100">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        {cards.filter((c) => Number(c.stock) > 0).length} disponibles
+      </span>
+
+      <Link
+        href="/admin/login"
+        className="rounded-full border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 hover:bg-pink-500 hover:text-white hover:border-pink-500 transition-all shadow-xs"
+      >
+        Admin 🔒
+      </Link>
+    </div>
+  </div>
+</header> 
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
         {/* Filtros Lateral */}
@@ -303,13 +321,12 @@ export default function CarpetaPublica() {
 
         {/* Galería */}
         <div className="space-y-4 md:col-span-3">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o número…"
-            className="w-full rounded-2xl border border-pink-200 bg-white p-3 text-xs text-gray-800 shadow-xs outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200 transition-all"
-          />
+  {/* Contador de resultados e indicadores */}
+  <div className="flex items-center justify-between text-xs text-gray-500 px-1">
+    <span className="lg:hidden font-mono text-[11px] text-pink-500">
+      {cards.filter((c) => Number(c.stock) > 0).length} disp.
+    </span>
+  </div>
 
           <p className="text-xs text-gray-500">{filteredCards.length} cartas encontradas</p>
 
@@ -370,6 +387,7 @@ export default function CarpetaPublica() {
                           {hasStock ? (stockNum === 1 ? "Queda 1" : `Quedan ${stockNum}`) : "Agotada"}
                         </div>
 
+                        {/* Imagen principal de la carta */}
                         {carta.image && typeof carta.image === "string" ? (
                           <img
                             src={carta.image}
@@ -381,6 +399,15 @@ export default function CarpetaPublica() {
                             Sin foto
                           </div>
                         )}
+
+                        {/* 📍 Sello superpuesto posicionado en el centro-derecho */}
+{carta.hasStamp && (
+  <img
+    src="/tu-sello.png"
+    alt="Sello"
+    className="absolute top-[52%] right-2 -translate-y-8.5 w-10 h-10 object-contain z-10 pointer-events-none drop-shadow-md transition-transform duration-300 group-hover:scale-110"
+  />
+)}
                       </div>
 
                       {/* Etiquetas de Brillo y Rareza */}
@@ -393,7 +420,7 @@ export default function CarpetaPublica() {
                           )}
                           {rarityText && (
                             <span className="inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 capitalize">
-                               {rarityText}
+                              {rarityText}
                             </span>
                           )}
                         </div>

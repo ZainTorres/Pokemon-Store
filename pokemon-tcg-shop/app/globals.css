@@ -1,17 +1,31 @@
 @import "tailwindcss";
 
 @theme {
+
   --color-fairy-cream: #FFF6FB;
+
   --color-fairy-page: #FFE1F0;
+
   --color-fairy-sleeve: #FFD0E8;
+
   --color-fairy-soft: #FFB8DD;
+
   --color-fairy: #FF6FB8;
+
   --color-fairy-deep: #E0499A;
+
   --color-fairy-ink: #2E1F2B;
+
   --color-fairy-muted: #7A4A68;
+
 }
 
+
+
 body {
+
   background-color: var(--color-fairy-cream);
+
   color: var(--color-fairy-ink);
+
 }
