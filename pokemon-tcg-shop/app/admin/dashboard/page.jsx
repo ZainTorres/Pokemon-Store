@@ -10,10 +10,11 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  setDoc,
 } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { Search, Plus, Minus, Trash2, Sparkles, Loader2, LogOut, Package, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Minus, Trash2, Sparkles, Loader2, LogOut, Package, ChevronLeft, ChevronRight, Star, Megaphone } from "lucide-react";
 
 const renderSafeText = (value) => {
   if (!value) return "";
@@ -54,8 +55,46 @@ export default function AdminStock() {
     language: "es",
     foil: "normal",
     rarity: "normal",
-    hasStamp: false, 
+    hasStamp: false,
+    featured: false,
   });
+
+  // Banner de ofertas/avisos (settings/banner en Firestore)
+  const [bannerForm, setBannerForm] = useState({
+    title: "",
+    subtitle: "",
+    imageUrl: "",
+    link: "",
+    active: false,
+  });
+  const [savingBanner, setSavingBanner] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "banner"), (snap) => {
+      if (snap.exists()) setBannerForm((prev) => ({ ...prev, ...snap.data() }));
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSaveBanner = async (e) => {
+    e.preventDefault();
+    setSavingBanner(true);
+    try {
+      await setDoc(doc(db, "settings", "banner"), bannerForm, { merge: true });
+    } catch (error) {
+      console.error("Error guardando el banner:", error);
+    } finally {
+      setSavingBanner(false);
+    }
+  };
+
+  const handleToggleFeatured = async (cardId, current) => {
+    try {
+      await updateDoc(doc(db, "cards", cardId), { featured: !current });
+    } catch (error) {
+      console.error("Error actualizando destacado:", error);
+    }
+  };
 
   // Cargar inventario desde Firestore
   useEffect(() => {
@@ -230,6 +269,7 @@ export default function AdminStock() {
           price: productPrice,
           stock: addStockCount,
           hasStamp: productStamp,
+          featured: formData.featured || false,
           createdAt: new Date().toISOString(),
         };
 
@@ -249,6 +289,7 @@ export default function AdminStock() {
         foil: "normal",
         rarity: "normal",
         hasStamp: false,
+        featured: false,
       });
     } catch (error) {
       console.error("Error al guardar el producto:", error);
@@ -301,9 +342,9 @@ export default function AdminStock() {
   }, [filteredCards, currentPage]);
 
   return (
-    <div className="min-h-screen bg-pink-50/20 pb-12">
+    <div className="min-h-screen bg-kado-bg pb-12">
       {/* Header de Administración Flotante */}
-      <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/80 border-b border-pink-100/80 shadow-xs transition-all">
+      <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-kado-surface/80 border-b border-kado-border shadow-xs transition-all">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Link href="/" className="shrink-0 group" title="Ir al catálogo público">
@@ -314,12 +355,12 @@ export default function AdminStock() {
               />
             </Link>
 
-            <div className="border-l border-pink-200/60 pl-3">
-              <h1 className="text-base sm:text-lg font-extrabold text-pink-900 flex items-center gap-1.5 leading-tight">
-                <Sparkles className="text-pink-500 h-4 w-4 shrink-0" />
+            <div className="border-l border-kado-border pl-3">
+              <h1 className="text-base sm:text-lg font-extrabold text-kado-text flex items-center gap-1.5 leading-tight">
+                <Sparkles className="text-kado-soft h-4 w-4 shrink-0" />
                 <span>Panel de Administración</span>
               </h1>
-              <p className="text-[11px] text-pink-600 hidden sm:block">
+              <p className="text-[11px] text-kado-soft hidden sm:block">
                 Gestión de cartas (vía TCGdex ES/EN/JA) y productos sellados.
               </p>
             </div>
@@ -327,7 +368,7 @@ export default function AdminStock() {
 
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 rounded-full border border-pink-200/80 bg-pink-50/50 px-3.5 py-1.5 text-xs font-semibold text-pink-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all shadow-xs shrink-0 cursor-pointer"
+            className="flex items-center gap-2 rounded-full border border-kado-border bg-kado-bg/60 px-3.5 py-1.5 text-xs font-semibold text-kado-soft hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-400/40 transition-all shadow-xs shrink-0 cursor-pointer"
           >
             <LogOut size={14} />
             <span className="hidden sm:inline">Cerrar sesión</span>
@@ -339,17 +380,17 @@ export default function AdminStock() {
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8 pt-6">
 
         {/* SECCIÓN 1: Registrar Producto */}
-        <div className="rounded-2xl border border-pink-200 bg-white p-5 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-pink-100 pb-3 gap-2">
-            <h2 className="text-sm font-bold text-pink-900">1. Agregar Producto al Inventario</h2>
+        <div className="rounded-2xl border border-kado-border bg-kado-surface p-5 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-kado-border pb-3 gap-2">
+            <h2 className="text-sm font-bold text-kado-text">1. Agregar Producto al Inventario</h2>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => { setMode("api"); setSelectedApiCard(null); }}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                   mode === "api"
-                    ? "bg-pink-500 text-white border-pink-500"
-                    : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50"
+                    ? "bg-kado text-kado-bg border-kado"
+                    : "bg-kado-surface text-kado-soft border-kado-border hover:bg-kado-bg"
                 }`}
               >
                 Buscar en TCGdex
@@ -359,8 +400,8 @@ export default function AdminStock() {
                 onClick={() => { setMode("manual"); setSelectedApiCard(null); }}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                   mode === "manual"
-                    ? "bg-pink-500 text-white border-pink-500"
-                    : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50"
+                    ? "bg-kado text-kado-bg border-kado"
+                    : "bg-kado-surface text-kado-soft border-kado-border hover:bg-kado-bg"
                 }`}
               >
                 Registro Manual (Sellados)
@@ -375,7 +416,7 @@ export default function AdminStock() {
                 <select
                   value={searchLanguage}
                   onChange={(e) => setSearchLanguage(e.target.value)}
-                  className="rounded-xl border border-pink-200 px-3 py-2 text-xs font-semibold bg-white text-pink-900 outline-none focus:ring-2 focus:ring-pink-300"
+                  className="rounded-xl border border-kado-border px-3 py-2 text-xs font-semibold bg-kado-surface text-kado-text outline-none focus:ring-2 focus:ring-kado/40"
                 >
                   <option value="es">Español (ES)</option>
                   <option value="en">Inglés (EN)</option>
@@ -388,34 +429,34 @@ export default function AdminStock() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Escribe para buscar automáticamente (Ej: Pikachu, Charizard...)"
-                    className="w-full rounded-xl border border-pink-200 px-3 py-2 pr-8 text-xs outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                    className="w-full rounded-xl border border-kado-border px-3 py-2 pr-8 text-xs outline-none focus:ring-2 focus:ring-kado/40 bg-kado-surface text-kado-text"
                   />
                   {isSearching && (
                     <div className="absolute right-2.5 top-2.5">
-                      <Loader2 size={14} className="animate-spin text-pink-500" />
+                      <Loader2 size={14} className="animate-spin text-kado-soft" />
                     </div>
                   )}
                 </div>
               </div>
 
-              {apiError && <p className="text-xs text-red-500 mt-1">{apiError}</p>}
+              {apiError && <p className="text-xs text-rose-400 mt-1">{apiError}</p>}
 
               {searchResults.length > 0 && (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 max-h-60 overflow-y-auto p-2 bg-pink-50/40 rounded-xl border border-pink-100">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 max-h-60 overflow-y-auto p-2 bg-kado-bg/60 rounded-xl border border-kado-border">
                   {searchResults.map((card) => (
                     <div
                       key={card.id}
                       onClick={() => handleSelectCard(card)}
-                      className="cursor-pointer rounded-lg border border-pink-100 bg-white p-2 hover:border-pink-400 hover:bg-pink-50 transition-all text-center flex flex-col justify-between"
+                      className="cursor-pointer rounded-lg border border-kado-border bg-kado-surface p-2 hover:border-kado hover:bg-kado-bg transition-all text-center flex flex-col justify-between"
                     >
                       {card.image ? (
                         <img src={`${card.image}/low.webp`} alt={card.name} className="h-28 object-contain mx-auto" />
                       ) : (
-                        <div className="h-28 flex items-center justify-center bg-gray-50 text-[10px] text-gray-400">Sin Imagen</div>
+                        <div className="h-28 flex items-center justify-center bg-kado-bg/60 text-[10px] text-kado-muted">Sin Imagen</div>
                       )}
                       <div>
-                        <p className="font-bold text-[11px] text-gray-800 line-clamp-1 mt-1">{card.name}</p>
-                        <p className="text-[10px] text-gray-500">#{card.localId || "N/A"}</p>
+                        <p className="font-bold text-[11px] text-kado-text line-clamp-1 mt-1">{card.name}</p>
+                        <p className="text-[10px] text-kado-muted">#{card.localId || "N/A"}</p>
                       </div>
                     </div>
                   ))}
@@ -426,15 +467,15 @@ export default function AdminStock() {
 
           {/* MODO MANUAL O CARTA SELECCIONADA */}
           {(mode === "manual" || selectedApiCard) && (
-            <form onSubmit={handleSaveCard} className="rounded-xl border border-pink-300 bg-pink-50/20 p-4 space-y-4">
+            <form onSubmit={handleSaveCard} className="rounded-xl border border-kado bg-kado-bg/60 p-4 space-y-4">
               {selectedApiCard && (
-                <div className="flex items-center gap-3 border-b border-pink-100 pb-3">
+                <div className="flex items-center gap-3 border-b border-kado-border pb-3">
                   {selectedApiCard.image && (
                     <img src={`${selectedApiCard.image}/high.webp`} alt={selectedApiCard.name} className="h-16 object-contain" />
                   )}
                   <div>
-                    <p className="font-bold text-xs text-gray-800">{selectedApiCard.name}</p>
-                    <p className="text-[11px] text-gray-500">{selectedApiCard.set?.name} • #{selectedApiCard.localId}</p>
+                    <p className="font-bold text-xs text-kado-text">{selectedApiCard.name}</p>
+                    <p className="text-[11px] text-kado-muted">{selectedApiCard.set?.name} • #{selectedApiCard.localId}</p>
                   </div>
                 </div>
               )}
@@ -443,47 +484,47 @@ export default function AdminStock() {
                 {mode === "manual" && (
                   <>
                     <div className="sm:col-span-2">
-                      <label className="block font-semibold text-gray-700 mb-1">Nombre del Producto</label>
+                      <label className="block font-semibold text-kado-text mb-1">Nombre del Producto</label>
                       <input
                         type="text"
                         required
                         placeholder="Ej: Elite Trainer Box - 151"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full rounded-lg border border-pink-200 bg-white p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                        className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                       />
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-gray-700 mb-1">Expansión / Set</label>
+                      <label className="block font-semibold text-kado-text mb-1">Expansión / Set</label>
                       <input
                         type="text"
                         placeholder="Ej: Scarlet & Violet"
                         value={formData.expansion}
                         onChange={(e) => setFormData({ ...formData, expansion: e.target.value })}
-                        className="w-full rounded-lg border border-pink-200 bg-white p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                        className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                       />
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block font-semibold text-gray-700 mb-1">URL Imagen (Opcional)</label>
+                      <label className="block font-semibold text-kado-text mb-1">URL Imagen (Opcional)</label>
                       <input
                         type="url"
                         placeholder="https://..."
                         value={formData.image}
                         onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                        className="w-full rounded-lg border border-pink-200 bg-white p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                        className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                       />
                     </div>
                   </>
                 )}
 
                 <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Tipo</label>
+                  <label className="block font-semibold text-kado-text mb-1">Tipo</label>
                   <select
                     value={formData.productType}
                     onChange={(e) => setFormData({ ...formData, productType: e.target.value })}
-                    className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800 font-medium"
+                    className="w-full rounded-lg border border-kado-border p-2 outline-none focus:ring-2 focus:ring-kado/40 bg-kado-surface text-kado-text font-medium"
                   >
                     <option value="carta">Carta Suelta</option>
                     <option value="etb">ETB</option>
@@ -494,7 +535,7 @@ export default function AdminStock() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Precio (S/)</label>
+                  <label className="block font-semibold text-kado-text mb-1">Precio (S/)</label>
                   <input
                     type="number"
                     step="0.10"
@@ -502,28 +543,28 @@ export default function AdminStock() {
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     placeholder="Ej: 180.00"
-                    className="w-full rounded-lg border border-pink-200 bg-white p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                    className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Stock a añadir</label>
+                  <label className="block font-semibold text-kado-text mb-1">Stock a añadir</label>
                   <input
                     type="number"
                     min="1"
                     required
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    className="w-full rounded-lg border border-pink-200 bg-white p-2 outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                    className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Idioma</label>
+                  <label className="block font-semibold text-kado-text mb-1">Idioma</label>
                   <select
                     value={formData.language}
                     onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                    className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800 font-semibold"
+                    className="w-full rounded-lg border border-kado-border p-2 outline-none focus:ring-2 focus:ring-kado/40 bg-kado-surface text-kado-text font-semibold"
                   >
                     <option value="es">Español (ES)</option>
                     <option value="en">Inglés (EN)</option>
@@ -534,11 +575,11 @@ export default function AdminStock() {
                 {formData.productType === "carta" && (
                   <>
                     <div>
-                      <label className="block font-semibold text-gray-700 mb-1">Acabado</label>
+                      <label className="block font-semibold text-kado-text mb-1">Acabado</label>
                       <select
                         value={formData.foil}
                         onChange={(e) => setFormData({ ...formData, foil: e.target.value })}
-                        className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                        className="w-full rounded-lg border border-kado-border p-2 outline-none focus:ring-2 focus:ring-kado/40 bg-kado-surface text-kado-text"
                       >
                         <option value="normal">Normal</option>
                         <option value="holo">Holo</option>
@@ -547,11 +588,11 @@ export default function AdminStock() {
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-gray-700 mb-1">Rareza</label>
+                      <label className="block font-semibold text-kado-text mb-1">Rareza</label>
                       <select
                         value={formData.rarity}
                         onChange={(e) => setFormData({ ...formData, rarity: e.target.value })}
-                        className="w-full rounded-lg border border-pink-200 p-2 outline-none focus:ring-2 focus:ring-pink-300 bg-white text-gray-800"
+                        className="w-full rounded-lg border border-kado-border p-2 outline-none focus:ring-2 focus:ring-kado/40 bg-kado-surface text-kado-text"
                       >
                         <option value="normal">Normal</option>
                         <option value="fullart">Full Art</option>
@@ -567,19 +608,33 @@ export default function AdminStock() {
                         id="hasStamp"
                         checked={formData.hasStamp}
                         onChange={(e) => setFormData({ ...formData, hasStamp: e.target.checked })}
-                        className="h-4 w-4 rounded border-pink-300 text-pink-500 focus:ring-pink-300 cursor-pointer"
+                        className="h-4 w-4 rounded border-kado text-kado-soft focus:ring-kado/40 cursor-pointer"
                       />
-                      <label htmlFor="hasStamp" className="text-xs font-semibold text-gray-700 cursor-pointer select-none">
+                      <label htmlFor="hasStamp" className="text-xs font-semibold text-kado-text cursor-pointer select-none">
                         ¿Incluye sello de Prize Pack?
                       </label>
                     </div>
                   </>
                 )}
+
+                <div className="flex items-center gap-2 pt-2 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="featured"
+                    checked={formData.featured}
+                    onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
+                    className="h-4 w-4 rounded border-kado text-kado-soft focus:ring-kado/40 cursor-pointer"
+                  />
+                  <label htmlFor="featured" className="text-xs font-semibold text-kado-text cursor-pointer select-none flex items-center gap-1">
+                    <Star size={12} className="text-kado-soft" />
+                    Destacado (aparece en el slider del home)
+                  </label>
+                </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-pink-500 py-2.5 text-xs font-bold text-white hover:bg-pink-600 transition-colors cursor-pointer shadow-sm"
+                className="w-full rounded-xl bg-kado py-2.5 text-xs font-bold text-kado-bg hover:bg-kado-deep transition-colors cursor-pointer shadow-sm"
               >
                 Guardar / Actualizar Stock en Inventario
               </button>
@@ -587,16 +642,90 @@ export default function AdminStock() {
           )}
         </div>
 
+        {/* SECCIÓN 1.5: Banner de Ofertas / Avisos del Home */}
+        <div className="space-y-4 bg-kado-surface p-5 rounded-2xl border border-kado-border shadow-sm">
+          <div className="flex items-center justify-between border-b border-kado-border pb-3">
+            <h2 className="text-sm font-bold text-kado-text flex items-center gap-1.5">
+              <Megaphone size={14} className="text-kado-soft" />
+              2. Banner de ofertas / avisos (home)
+            </h2>
+            <label className="flex items-center gap-2 text-xs font-semibold text-kado-text cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={bannerForm.active}
+                onChange={(e) => setBannerForm({ ...bannerForm, active: e.target.checked })}
+                className="h-4 w-4 rounded border-kado text-kado-soft focus:ring-kado/40 cursor-pointer"
+              />
+              Visible en el home
+            </label>
+          </div>
+
+          <form onSubmit={handleSaveBanner} className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
+            <div>
+              <label className="block font-semibold text-kado-text mb-1">Título</label>
+              <input
+                type="text"
+                placeholder="Ej: 20% OFF en cartas Reverse Holo"
+                value={bannerForm.title}
+                onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
+                className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-kado-text mb-1">Subtítulo</label>
+              <input
+                type="text"
+                placeholder="Ej: Válido hasta fin de mes"
+                value={bannerForm.subtitle}
+                onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+                className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-kado-text mb-1">URL de imagen de fondo (opcional)</label>
+              <input
+                type="url"
+                placeholder="https://..."
+                value={bannerForm.imageUrl}
+                onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+                className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-kado-text mb-1">Link al hacer clic (opcional)</label>
+              <input
+                type="url"
+                placeholder="https://wa.me/..."
+                value={bannerForm.link}
+                onChange={(e) => setBannerForm({ ...bannerForm, link: e.target.value })}
+                className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={savingBanner}
+              className="sm:col-span-2 w-full rounded-xl bg-kado py-2.5 text-xs font-bold text-kado-bg hover:bg-kado-deep transition-colors cursor-pointer shadow-sm disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {savingBanner && <Loader2 size={14} className="animate-spin" />}
+              {savingBanner ? "Guardando..." : "Guardar banner"}
+            </button>
+          </form>
+        </div>
+
         {/* SECCIÓN 2: Render de Ítems en Inventario */}
-        <div className="space-y-4 bg-white p-5 rounded-2xl border border-pink-200 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-pink-100 pb-3">
-            <h2 className="text-sm font-bold text-pink-900">
-              2. Productos en Inventario ({filteredCards.length} de {cards.length})
+        <div className="space-y-4 bg-kado-surface p-5 rounded-2xl border border-kado-border shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-kado-border pb-3">
+            <h2 className="text-sm font-bold text-kado-text">
+              3. Productos en Inventario ({filteredCards.length} de {cards.length})
             </h2>
 
             {/* Buscador de Inventario Existente */}
             <div className="relative w-full sm:w-72">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-kado-muted">
                 <Search size={14} />
               </span>
               <input
@@ -607,15 +736,15 @@ export default function AdminStock() {
                   setCurrentPage(1); // Resetear a la primera página al buscar
                 }}
                 placeholder="Buscar en tu inventario..."
-                className="w-full rounded-xl border border-pink-200 bg-pink-50/20 py-1.5 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-pink-300 text-gray-800"
+                className="w-full rounded-xl border border-kado-border bg-kado-bg/60 py-1.5 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
               />
             </div>
           </div>
 
           {loadingCards ? (
-            <p className="text-xs text-gray-400">Cargando inventario...</p>
+            <p className="text-xs text-kado-muted">Cargando inventario...</p>
           ) : filteredCards.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">No se encontraron productos registrados.</p>
+            <p className="text-xs text-kado-muted italic">No se encontraron productos registrados.</p>
           ) : (
             <>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -625,14 +754,14 @@ export default function AdminStock() {
                   return (
                     <div
                       key={c.id}
-                      className="flex flex-col justify-between rounded-xl border border-pink-100 bg-white p-3 shadow-xs hover:border-pink-300 transition-all"
+                      className="flex flex-col justify-between rounded-xl border border-kado-border bg-kado-surface p-3 shadow-xs hover:border-kado transition-all"
                     >
                       <div className="flex gap-3">
                         <div className="relative shrink-0">
                           {c.image ? (
                             <img src={c.image} alt={renderSafeText(c.name)} className="h-24 w-16 object-contain" />
                           ) : (
-                            <div className="h-24 w-16 bg-pink-50 rounded flex items-center justify-center text-pink-300">
+                            <div className="h-24 w-16 bg-kado-bg/60 rounded flex items-center justify-center text-kado-muted">
                               <Package size={24} />
                             </div>
                           )}
@@ -647,28 +776,31 @@ export default function AdminStock() {
                         </div>
 
                         <div className="space-y-1 text-xs flex-1">
-                          <p className="font-bold text-gray-800 line-clamp-2">{renderSafeText(c.name)}</p>
-                          <p className="text-[10px] text-gray-400">
+                          <p className="font-bold text-kado-text line-clamp-2 flex items-center gap-1">
+                            {c.featured && <Star size={11} className="shrink-0 text-kado-soft" fill="currentColor" />}
+                            {renderSafeText(c.name)}
+                          </p>
+                          <p className="text-[10px] text-kado-muted">
                             {isCard ? `#${renderSafeText(c.cardNumber)} • ` : ""}
                             {renderSafeText(c.expansion)}
                           </p>
                           
                           <div className="flex flex-wrap gap-1 text-[9px] uppercase font-semibold mt-1">
-                            <span className="rounded bg-pink-100 px-1.5 py-0.5 text-pink-700 font-bold">
+                            <span className="rounded bg-kado/15 px-1.5 py-0.5 text-kado-soft font-bold">
                               {renderSafeText(c.language)}
                             </span>
 
                             {!isCard ? (
-                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800 flex items-center gap-0.5">
+                              <span className="rounded bg-emerald-400/15 px-1.5 py-0.5 text-emerald-300 flex items-center gap-0.5">
                                 <Package size={10} />
                                 {renderSafeText(c.productType)}
                               </span>
                             ) : (
                               <>
-                                <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
+                                <span className="rounded bg-violet-400/15 px-1.5 py-0.5 text-violet-300">
                                   {renderSafeText(c.foil)}
                                 </span>
-                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                                <span className="rounded bg-sky-400/15 px-1.5 py-0.5 text-sky-300">
                                   {renderSafeText(c.rarity)}
                                 </span>
                               </>
@@ -677,43 +809,56 @@ export default function AdminStock() {
                         </div>
                       </div>
 
-                      <div className="mt-3 border-t border-pink-50 pt-2 space-y-2">
+                      <div className="mt-3 border-t border-kado-border/60 pt-2 space-y-2">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500 font-medium">Precio (S/):</span>
+                          <span className="text-kado-muted font-medium">Precio (S/):</span>
                           <input
                             type="number"
                             step="0.10"
                             defaultValue={typeof c.price === "number" ? c.price : parseFloat(renderSafeText(c.price)) || 0}
                             onBlur={(e) => handleUpdatePrice(c.id, e.target.value)}
-                            className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right font-bold text-pink-600 outline-none focus:border-pink-400"
+                            className="w-20 rounded border border-kado-border px-2 py-0.5 text-right font-bold text-kado-soft outline-none focus:border-kado"
                           />
                         </div>
 
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500 font-medium">Stock:</span>
+                          <span className="text-kado-muted font-medium">Stock:</span>
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, -1)}
-                              className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600 cursor-pointer"
+                              className="rounded bg-kado-border/50 p-1 hover:bg-kado-border/60 text-kado-muted cursor-pointer"
                             >
                               <Minus size={12} />
                             </button>
-                            <span className="font-bold text-gray-800">{Number(c.stock) || 0}</span>
+                            <span className="font-bold text-kado-text">{Number(c.stock) || 0}</span>
                             <button
                               onClick={() => handleUpdateStock(c.id, Number(c.stock) || 0, 1)}
-                              className="rounded bg-gray-100 p-1 hover:bg-pink-100 text-gray-600 cursor-pointer"
+                              className="rounded bg-kado-border/50 p-1 hover:bg-kado-border/60 text-kado-muted cursor-pointer"
                             >
                               <Plus size={12} />
                             </button>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleDeleteCard(c.id)}
-                          className="flex w-full items-center justify-center gap-1 rounded py-1 text-[10px] text-red-500 hover:bg-red-50 cursor-pointer transition-colors"
-                        >
-                          <Trash2 size={12} /> Eliminar ítem
-                        </button>
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            onClick={() => handleToggleFeatured(c.id, Boolean(c.featured))}
+                            className={`flex flex-1 items-center justify-center gap-1 rounded py-1 text-[10px] font-semibold cursor-pointer transition-colors ${
+                              c.featured
+                                ? "bg-kado/20 text-kado-soft hover:bg-kado/30"
+                                : "text-kado-muted hover:bg-kado-border/50"
+                            }`}
+                          >
+                            <Star size={12} fill={c.featured ? "currentColor" : "none"} />
+                            {c.featured ? "Destacado" : "Destacar"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCard(c.id)}
+                            className="flex flex-1 items-center justify-center gap-1 rounded py-1 text-[10px] text-rose-400 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                          >
+                            <Trash2 size={12} /> Eliminar
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -722,22 +867,22 @@ export default function AdminStock() {
 
               {/* Controles de Paginación */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-pink-100 pt-4 mt-4">
-                  <p className="text-xs text-gray-500">
+                <div className="flex items-center justify-between border-t border-kado-border pt-4 mt-4">
+                  <p className="text-xs text-kado-muted">
                     Página <span className="font-bold">{currentPage}</span> de <span className="font-bold">{totalPages}</span>
                   </p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                       disabled={currentPage === 1}
-                      className="flex items-center gap-1 rounded-lg border border-pink-200 px-3 py-1 text-xs font-semibold text-pink-700 bg-white hover:bg-pink-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      className="flex items-center gap-1 rounded-lg border border-kado-border px-3 py-1 text-xs font-semibold text-kado-soft bg-kado-surface hover:bg-kado-bg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                     >
                       <ChevronLeft size={14} /> Anterior
                     </button>
                     <button
                       onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                       disabled={currentPage === totalPages}
-                      className="flex items-center gap-1 rounded-lg border border-pink-200 px-3 py-1 text-xs font-semibold text-pink-700 bg-white hover:bg-pink-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      className="flex items-center gap-1 rounded-lg border border-kado-border px-3 py-1 text-xs font-semibold text-kado-soft bg-kado-surface hover:bg-kado-bg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                     >
                       Siguiente <ChevronRight size={14} />
                     </button>

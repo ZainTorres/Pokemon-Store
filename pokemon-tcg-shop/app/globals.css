@@ -1,31 +1,25 @@
 @import "tailwindcss";
 
 @theme {
-
-  --color-fairy-cream: #FFF6FB;
-
-  --color-fairy-page: #FFE1F0;
-
-  --color-fairy-sleeve: #FFD0E8;
-
-  --color-fairy-soft: #FFB8DD;
-
-  --color-fairy: #FF6FB8;
-
-  --color-fairy-deep: #E0499A;
-
-  --color-fairy-ink: #2E1F2B;
-
-  --color-fairy-muted: #7A4A68;
-
+  --color-kado-bg: 
+#0C0D12;       /* Fondo principal nocturno */
+  --color-kado-surface: 
+#151824;  /* Contenedores y tarjetas */
+  --color-kado-border: 
+#23283B;   /* Bordes y divisores sutiles */
+  --color-kado-muted: 
+#6B789C;    /* Texto secundario e íconos opacos */
+  --color-kado: 
+#7B8EC8;          /* Azul periwinkle del logo Kado */
+  --color-kado-soft: 
+#A2B2E2;     /* Acentos claros, hovers y highlights */
+  --color-kado-deep: 
+#52639C;     /* Acento oscuro para estados activos */
+  --color-kado-text: 
+#EEF2FF;     /* Texto de alto contraste */
 }
-
-
 
 body {
-
-  background-color: var(--color-fairy-cream);
-
-  color: var(--color-fairy-ink);
-
-}
+  background-color: var(--color-kado-bg);
+  color: var(--color-kado-text);
+} 
