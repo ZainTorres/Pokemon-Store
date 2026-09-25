@@ -14,7 +14,10 @@ import {
 } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { Search, Plus, Minus, Trash2, Sparkles, Loader2, LogOut, Package, ChevronLeft, ChevronRight, Star, Megaphone } from "lucide-react";
+import {
+  Search, Plus, Minus, Trash2, Sparkles, Loader2, LogOut,
+  Package, ChevronLeft, ChevronRight, Star, Megaphone, Users, UserPlus, X
+} from "lucide-react";
 
 const renderSafeText = (value) => {
   if (!value) return "";
@@ -25,22 +28,39 @@ const renderSafeText = (value) => {
   return "";
 };
 
+// Colores por propietario (se asignan cíclicamente)
+const OWNER_COLORS = [
+  { bg: "bg-violet-400/15", text: "text-violet-300", dot: "bg-violet-400" },
+  { bg: "bg-sky-400/15",    text: "text-sky-300",    dot: "bg-sky-400" },
+  { bg: "bg-emerald-400/15",text: "text-emerald-300",dot: "bg-emerald-400" },
+  { bg: "bg-amber-400/15",  text: "text-amber-300",  dot: "bg-amber-400" },
+  { bg: "bg-rose-400/15",   text: "text-rose-300",   dot: "bg-rose-400" },
+  { bg: "bg-cyan-400/15",   text: "text-cyan-300",   dot: "bg-cyan-400" },
+  { bg: "bg-fuchsia-400/15",text: "text-fuchsia-300",dot: "bg-fuchsia-400" },
+  { bg: "bg-orange-400/15", text: "text-orange-300", dot: "bg-orange-400" },
+];
+
 export default function AdminStock() {
   const router = useRouter();
   const [cards, setCards] = useState([]);
   const [loadingCards, setLoadingCards] = useState(true);
 
-  const [mode, setMode] = useState("api"); // "api" | "manual"
+  const [mode, setMode] = useState("api");
   const [searchTerm, setSearchTerm] = useState("");
-  const [searchLanguage, setSearchLanguage] = useState("es"); // es, en, ja
+  const [searchLanguage, setSearchLanguage] = useState("es");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [apiError, setApiError] = useState("");
-
   const [selectedApiCard, setSelectedApiCard] = useState(null);
 
-  // Estados para inventario (Filtro y Paginación)
+  // Propietarios
+  const [owners, setOwners] = useState(["Zain", "Edu", "Kado"]);
+  const [newOwnerInput, setNewOwnerInput] = useState("");
+  const [showOwnerManager, setShowOwnerManager] = useState(false);
+
+  // Filtros de inventario
   const [inventorySearch, setInventorySearch] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("todos");
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 12;
 
@@ -57,9 +77,10 @@ export default function AdminStock() {
     rarity: "normal",
     hasStamp: false,
     featured: false,
+    owner: "Kado",
   });
 
-  // Banner de ofertas/avisos (settings/banner en Firestore)
+  // Banner
   const [bannerForm, setBannerForm] = useState({
     title: "",
     subtitle: "",
@@ -69,6 +90,49 @@ export default function AdminStock() {
   });
   const [savingBanner, setSavingBanner] = useState(false);
 
+  // Cargar propietarios desde Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "owners"), (snap) => {
+      if (snap.exists() && snap.data().list?.length) {
+        setOwners(snap.data().list);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Guardar propietarios en Firestore
+  const saveOwners = async (list) => {
+    try {
+      await setDoc(doc(db, "settings", "owners"), { list }, { merge: true });
+    } catch (e) {
+      console.error("Error guardando propietarios:", e);
+    }
+  };
+
+  const handleAddOwner = () => {
+    const trimmed = newOwnerInput.trim();
+    if (!trimmed || owners.includes(trimmed)) return;
+    const updated = [...owners, trimmed];
+    setOwners(updated);
+    saveOwners(updated);
+    setNewOwnerInput("");
+  };
+
+  const handleRemoveOwner = (name) => {
+    if (owners.length <= 1) return;
+    const updated = owners.filter((o) => o !== name);
+    setOwners(updated);
+    saveOwners(updated);
+    if (formData.owner === name) setFormData((p) => ({ ...p, owner: updated[0] }));
+    if (ownerFilter === name) setOwnerFilter("todos");
+  };
+
+  const getOwnerColor = (name) => {
+    const idx = owners.indexOf(name);
+    return OWNER_COLORS[idx % OWNER_COLORS.length] ?? OWNER_COLORS[0];
+  };
+
+  // Banner
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "banner"), (snap) => {
       if (snap.exists()) setBannerForm((prev) => ({ ...prev, ...snap.data() }));
@@ -96,15 +160,12 @@ export default function AdminStock() {
     }
   };
 
-  // Cargar inventario desde Firestore
+  // Cargar inventario
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, "cards"),
       (snapshot) => {
-        const cardsData = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        const cardsData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setCards(cardsData);
         setLoadingCards(false);
       },
@@ -113,11 +174,10 @@ export default function AdminStock() {
         setLoadingCards(false);
       }
     );
-
     return () => unsubscribe();
   }, []);
 
-  // Autobúsqueda optimizada TCGdex
+  // Búsqueda TCGdex
   useEffect(() => {
     if (mode !== "api" || !searchTerm.trim()) {
       setSearchResults([]);
@@ -140,9 +200,7 @@ export default function AdminStock() {
           );
           if (directRes.ok) {
             const directCard = await directRes.json();
-            if (directCard && !directCard.error) {
-              results.push(directCard);
-            }
+            if (directCard && !directCard.error) results.push(directCard);
           }
         } catch (e) {}
 
@@ -150,16 +208,13 @@ export default function AdminStock() {
           let response = await fetch(
             `https://api.tcgdex.net/v2/${searchLanguage}/cards?name=${encodeURIComponent(cleanQuery)}`
           );
-
           if (response.ok) {
             let data = await response.json();
             if ((!data || data.length === 0) && searchLanguage !== "en") {
               const fallbackRes = await fetch(
                 `https://api.tcgdex.net/v2/en/cards?name=${encodeURIComponent(cleanQuery)}`
               );
-              if (fallbackRes.ok) {
-                data = await fallbackRes.json();
-              }
+              if (fallbackRes.ok) data = await fallbackRes.json();
             }
             results = data || [];
           }
@@ -199,9 +254,7 @@ export default function AdminStock() {
       let detail = await response.json();
 
       if (!detail || detail.error) {
-        const fallbackRes = await fetch(
-          `https://api.tcgdex.net/v2/en/cards/${card.id}`
-        );
+        const fallbackRes = await fetch(`https://api.tcgdex.net/v2/en/cards/${card.id}`);
         detail = await fallbackRes.json();
       }
 
@@ -234,8 +287,8 @@ export default function AdminStock() {
       const productStamp = isCardType ? (formData.hasStamp || false) : false;
       const addStockCount = parseInt(formData.stock, 10) || 1;
       const productPrice = parseFloat(formData.price) || 0;
+      const productOwner = formData.owner || "Kado";
 
-      // Buscar si ya existe un ítem idéntico en inventario para evitar duplicados
       const existingCard = cards.find((c) => {
         const sameType = (c.productType || "carta") === formData.productType;
         const sameName = c.name?.toLowerCase().trim() === productName.toLowerCase().trim();
@@ -244,24 +297,24 @@ export default function AdminStock() {
         const sameFoil = c.foil === productFoil;
         const sameRarity = c.rarity === productRarity;
         const sameStamp = Boolean(c.hasStamp) === Boolean(productStamp);
-
-        return sameType && sameName && sameExp && sameLang && sameFoil && sameRarity && sameStamp;
+        const sameOwner = (c.owner || "Kado") === productOwner;
+        return sameType && sameName && sameExp && sameLang && sameFoil && sameRarity && sameStamp && sameOwner;
       });
 
       if (existingCard) {
-        // Si existe, actualizamos sumando el stock y opcionalmente el precio
         const newStock = (Number(existingCard.stock) || 0) + addStockCount;
         await updateDoc(doc(db, "cards", existingCard.id), {
           stock: newStock,
-          price: productPrice > 0 ? productPrice : existingCard.price
+          price: productPrice > 0 ? productPrice : existingCard.price,
         });
       } else {
-        // Si no existe, creamos uno nuevo
         const newProduct = {
           name: productName,
           cardNumber: productCardNumber,
           expansion: productExpansion,
-          image: mode === "api" && selectedApiCard ? (selectedApiCard.image ? `${selectedApiCard.image}/high.webp` : "") : formData.image,
+          image: mode === "api" && selectedApiCard
+            ? (selectedApiCard.image ? `${selectedApiCard.image}/high.webp` : "")
+            : formData.image,
           productType: formData.productType,
           language: productLanguage,
           foil: productFoil,
@@ -270,9 +323,9 @@ export default function AdminStock() {
           stock: addStockCount,
           hasStamp: productStamp,
           featured: formData.featured || false,
+          owner: productOwner,
           createdAt: new Date().toISOString(),
         };
-
         await addDoc(collection(db, "cards"), newProduct);
       }
 
@@ -290,6 +343,7 @@ export default function AdminStock() {
         rarity: "normal",
         hasStamp: false,
         featured: false,
+        owner: formData.owner, // mantiene el propietario seleccionado
       });
     } catch (error) {
       console.error("Error al guardar el producto:", error);
@@ -308,11 +362,18 @@ export default function AdminStock() {
   const handleUpdatePrice = async (cardId, newPrice) => {
     const priceVal = parseFloat(newPrice);
     if (isNaN(priceVal) || priceVal < 0) return;
-
     try {
       await updateDoc(doc(db, "cards", cardId), { price: priceVal });
     } catch (error) {
       console.error("Error actualizando precio:", error);
+    }
+  };
+
+  const handleUpdateOwner = async (cardId, newOwner) => {
+    try {
+      await updateDoc(doc(db, "cards", cardId), { owner: newOwner });
+    } catch (error) {
+      console.error("Error actualizando propietario:", error);
     }
   };
 
@@ -325,15 +386,27 @@ export default function AdminStock() {
     }
   };
 
-  // Filtrado y Paginación de Inventario
+  // Filtrado y paginación
   const filteredCards = useMemo(() => {
     return cards.filter((c) => {
       const query = inventorySearch.toLowerCase();
       const name = renderSafeText(c.name).toLowerCase();
       const expansion = renderSafeText(c.expansion).toLowerCase();
-      return name.includes(query) || expansion.includes(query);
+      const matchesSearch = name.includes(query) || expansion.includes(query);
+      const matchesOwner = ownerFilter === "todos" || (c.owner || "Kado") === ownerFilter;
+      return matchesSearch && matchesOwner;
     });
-  }, [cards, inventorySearch]);
+  }, [cards, inventorySearch, ownerFilter]);
+
+  // Conteo por propietario
+  const ownerCounts = useMemo(() => {
+    const counts = {};
+    cards.forEach((c) => {
+      const owner = c.owner || "Kado";
+      counts[owner] = (counts[owner] || 0) + 1;
+    });
+    return counts;
+  }, [cards]);
 
   const totalPages = Math.ceil(filteredCards.length / ITEMS_PER_PAGE) || 1;
   const paginatedCards = useMemo(() => {
@@ -343,7 +416,7 @@ export default function AdminStock() {
 
   return (
     <div className="min-h-screen bg-kado-bg pb-12">
-      {/* Header de Administración Flotante */}
+      {/* Header */}
       <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-kado-surface/80 border-b border-kado-border shadow-xs transition-all">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -354,7 +427,6 @@ export default function AdminStock() {
                 className="h-9 md:h-11 w-auto object-contain transition-transform group-hover:scale-105"
               />
             </Link>
-
             <div className="border-l border-kado-border pl-3">
               <h1 className="text-base sm:text-lg font-extrabold text-kado-text flex items-center gap-1.5 leading-tight">
                 <Sparkles className="text-kado-soft h-4 w-4 shrink-0" />
@@ -376,10 +448,82 @@ export default function AdminStock() {
         </div>
       </header>
 
-      {/* Contenido Principal con Márgenes Ajustados */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8 pt-6">
 
-        {/* SECCIÓN 1: Registrar Producto */}
+        {/* ── SECCIÓN 0: Gestión de Propietarios ── */}
+        <div className="rounded-2xl border border-kado-border bg-kado-surface p-5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setShowOwnerManager((v) => !v)}
+            className="flex w-full items-center justify-between text-sm font-bold text-kado-text"
+          >
+            <span className="flex items-center gap-2">
+              <Users size={15} className="text-kado-soft" />
+              Propietarios de cartas
+              <span className="rounded-full bg-kado/20 px-2 py-0.5 text-[10px] font-bold text-kado-soft">
+                {owners.length}
+              </span>
+            </span>
+            <span className="text-xs text-kado-muted font-normal">
+              {showOwnerManager ? "Cerrar ▲" : "Gestionar ▼"}
+            </span>
+          </button>
+
+          {showOwnerManager && (
+            <div className="mt-4 space-y-3 border-t border-kado-border pt-4">
+              {/* Lista de propietarios actuales */}
+              <div className="flex flex-wrap gap-2">
+                {owners.map((owner) => {
+                  const color = getOwnerColor(owner);
+                  return (
+                    <div
+                      key={owner}
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${color.bg} ${color.text}`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${color.dot}`} />
+                      {owner}
+                      <span className="ml-1 opacity-60 text-[10px]">
+                        ({ownerCounts[owner] || 0})
+                      </span>
+                      <button
+                        onClick={() => handleRemoveOwner(owner)}
+                        className="ml-1 hover:opacity-70 transition-opacity cursor-pointer"
+                        title={`Eliminar ${owner}`}
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Agregar nuevo */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newOwnerInput}
+                  onChange={(e) => setNewOwnerInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddOwner())}
+                  placeholder="Nombre del nuevo propietario..."
+                  className="flex-1 rounded-xl border border-kado-border bg-kado-bg/60 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddOwner}
+                  className="flex items-center gap-1.5 rounded-xl bg-kado px-4 py-2 text-xs font-bold text-kado-bg hover:bg-kado-deep transition-colors cursor-pointer"
+                >
+                  <UserPlus size={13} />
+                  Agregar
+                </button>
+              </div>
+              <p className="text-[10px] text-kado-muted">
+                Los propietarios se guardan en Firestore y son compartidos entre sesiones.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── SECCIÓN 1: Registrar Producto ── */}
         <div className="rounded-2xl border border-kado-border bg-kado-surface p-5 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-kado-border pb-3 gap-2">
             <h2 className="text-sm font-bold text-kado-text">1. Agregar Producto al Inventario</h2>
@@ -494,7 +638,6 @@ export default function AdminStock() {
                         className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                       />
                     </div>
-
                     <div>
                       <label className="block font-semibold text-kado-text mb-1">Expansión / Set</label>
                       <input
@@ -505,7 +648,6 @@ export default function AdminStock() {
                         className="w-full rounded-lg border border-kado-border bg-kado-surface p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
                       />
                     </div>
-
                     <div className="sm:col-span-2">
                       <label className="block font-semibold text-kado-text mb-1">URL Imagen (Opcional)</label>
                       <input
@@ -531,6 +673,23 @@ export default function AdminStock() {
                     <option value="booster_bundle">Booster Bundle</option>
                     <option value="booster_box">Booster Box</option>
                     <option value="pack">Sobre Suelto</option>
+                  </select>
+                </div>
+
+                {/* ── PROPIETARIO ── */}
+                <div>
+                  <label className="block font-semibold text-kado-text mb-1 flex items-center gap-1">
+                    <Users size={11} className="text-kado-soft" />
+                    Propietario
+                  </label>
+                  <select
+                    value={formData.owner}
+                    onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                    className="w-full rounded-lg border border-kado-border p-2 outline-none focus:ring-2 focus:ring-kado/40 bg-kado-surface text-kado-text font-semibold"
+                  >
+                    {owners.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -642,7 +801,7 @@ export default function AdminStock() {
           )}
         </div>
 
-        {/* SECCIÓN 1.5: Banner de Ofertas / Avisos del Home */}
+        {/* ── SECCIÓN 1.5: Banner ── */}
         <div className="space-y-4 bg-kado-surface p-5 rounded-2xl border border-kado-border shadow-sm">
           <div className="flex items-center justify-between border-b border-kado-border pb-3">
             <h2 className="text-sm font-bold text-kado-text flex items-center gap-1.5">
@@ -671,7 +830,6 @@ export default function AdminStock() {
                 className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
               />
             </div>
-
             <div>
               <label className="block font-semibold text-kado-text mb-1">Subtítulo</label>
               <input
@@ -682,7 +840,6 @@ export default function AdminStock() {
                 className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
               />
             </div>
-
             <div>
               <label className="block font-semibold text-kado-text mb-1">URL de imagen de fondo (opcional)</label>
               <input
@@ -693,7 +850,6 @@ export default function AdminStock() {
                 className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
               />
             </div>
-
             <div>
               <label className="block font-semibold text-kado-text mb-1">Link al hacer clic (opcional)</label>
               <input
@@ -704,7 +860,6 @@ export default function AdminStock() {
                 className="w-full rounded-lg border border-kado-border bg-kado-bg/60 p-2 outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
               />
             </div>
-
             <button
               type="submit"
               disabled={savingBanner}
@@ -716,28 +871,57 @@ export default function AdminStock() {
           </form>
         </div>
 
-        {/* SECCIÓN 2: Render de Ítems en Inventario */}
+        {/* ── SECCIÓN 2: Inventario ── */}
         <div className="space-y-4 bg-kado-surface p-5 rounded-2xl border border-kado-border shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-kado-border pb-3">
-            <h2 className="text-sm font-bold text-kado-text">
-              3. Productos en Inventario ({filteredCards.length} de {cards.length})
-            </h2>
+          <div className="flex flex-col gap-3 border-b border-kado-border pb-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <h2 className="text-sm font-bold text-kado-text">
+                3. Productos en Inventario ({filteredCards.length} de {cards.length})
+              </h2>
+              <div className="relative w-full sm:w-72">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-kado-muted">
+                  <Search size={14} />
+                </span>
+                <input
+                  type="text"
+                  value={inventorySearch}
+                  onChange={(e) => { setInventorySearch(e.target.value); setCurrentPage(1); }}
+                  placeholder="Buscar en tu inventario..."
+                  className="w-full rounded-xl border border-kado-border bg-kado-bg/60 py-1.5 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
+                />
+              </div>
+            </div>
 
-            {/* Buscador de Inventario Existente */}
-            <div className="relative w-full sm:w-72">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-kado-muted">
-                <Search size={14} />
-              </span>
-              <input
-                type="text"
-                value={inventorySearch}
-                onChange={(e) => {
-                  setInventorySearch(e.target.value);
-                  setCurrentPage(1); // Resetear a la primera página al buscar
-                }}
-                placeholder="Buscar en tu inventario..."
-                className="w-full rounded-xl border border-kado-border bg-kado-bg/60 py-1.5 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-kado/40 text-kado-text"
-              />
+            {/* ── Filtro por propietario ── */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setOwnerFilter("todos"); setCurrentPage(1); }}
+                className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all cursor-pointer border ${
+                  ownerFilter === "todos"
+                    ? "bg-kado text-kado-bg border-kado"
+                    : "bg-kado-bg/60 text-kado-soft border-kado-border hover:border-kado/50"
+                }`}
+              >
+                Todos ({cards.length})
+              </button>
+              {owners.map((owner) => {
+                const color = getOwnerColor(owner);
+                const isActive = ownerFilter === owner;
+                return (
+                  <button
+                    key={owner}
+                    onClick={() => { setOwnerFilter(owner); setCurrentPage(1); }}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold transition-all cursor-pointer border ${
+                      isActive
+                        ? `${color.bg} ${color.text} border-transparent`
+                        : "bg-kado-bg/60 text-kado-soft border-kado-border hover:border-kado/50"
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${color.dot}`} />
+                    {owner} ({ownerCounts[owner] || 0})
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -750,12 +934,25 @@ export default function AdminStock() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {paginatedCards.map((c) => {
                   const isCard = !c.productType || c.productType === "carta";
+                  const cardOwner = c.owner || "Kado";
+                  const ownerColor = getOwnerColor(cardOwner);
 
                   return (
                     <div
                       key={c.id}
                       className="flex flex-col justify-between rounded-xl border border-kado-border bg-kado-surface p-3 shadow-xs hover:border-kado transition-all"
                     >
+                      {/* ── Etiqueta de propietario ── */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${ownerColor.bg} ${ownerColor.text}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${ownerColor.dot}`} />
+                          {cardOwner}
+                        </span>
+                        {c.featured && (
+                          <Star size={11} className="text-kado-soft" fill="currentColor" />
+                        )}
+                      </div>
+
                       <div className="flex gap-3">
                         <div className="relative shrink-0">
                           {c.image ? (
@@ -765,7 +962,6 @@ export default function AdminStock() {
                               <Package size={24} />
                             </div>
                           )}
-
                           {c.hasStamp && (
                             <img
                               src="/tu-sello.png"
@@ -776,20 +972,17 @@ export default function AdminStock() {
                         </div>
 
                         <div className="space-y-1 text-xs flex-1">
-                          <p className="font-bold text-kado-text line-clamp-2 flex items-center gap-1">
-                            {c.featured && <Star size={11} className="shrink-0 text-kado-soft" fill="currentColor" />}
+                          <p className="font-bold text-kado-text line-clamp-2">
                             {renderSafeText(c.name)}
                           </p>
                           <p className="text-[10px] text-kado-muted">
                             {isCard ? `#${renderSafeText(c.cardNumber)} • ` : ""}
                             {renderSafeText(c.expansion)}
                           </p>
-                          
                           <div className="flex flex-wrap gap-1 text-[9px] uppercase font-semibold mt-1">
                             <span className="rounded bg-kado/15 px-1.5 py-0.5 text-kado-soft font-bold">
                               {renderSafeText(c.language)}
                             </span>
-
                             {!isCard ? (
                               <span className="rounded bg-emerald-400/15 px-1.5 py-0.5 text-emerald-300 flex items-center gap-0.5">
                                 <Package size={10} />
@@ -840,6 +1033,22 @@ export default function AdminStock() {
                           </div>
                         </div>
 
+                        {/* ── Cambiar propietario inline ── */}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-kado-muted font-medium flex items-center gap-1">
+                            <Users size={10} /> Dueño:
+                          </span>
+                          <select
+                            value={cardOwner}
+                            onChange={(e) => handleUpdateOwner(c.id, e.target.value)}
+                            className={`rounded border border-kado-border px-1.5 py-0.5 text-[10px] font-bold outline-none focus:border-kado cursor-pointer ${ownerColor.bg} ${ownerColor.text}`}
+                          >
+                            {owners.map((o) => (
+                              <option key={o} value={o}>{o}</option>
+                            ))}
+                          </select>
+                        </div>
+
                         <div className="flex items-center gap-2 pt-1">
                           <button
                             onClick={() => handleToggleFeatured(c.id, Boolean(c.featured))}
@@ -865,7 +1074,6 @@ export default function AdminStock() {
                 })}
               </div>
 
-              {/* Controles de Paginación */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t border-kado-border pt-4 mt-4">
                   <p className="text-xs text-kado-muted">
