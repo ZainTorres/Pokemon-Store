@@ -68,8 +68,8 @@ export default function CarpetaPublica() {
   const [selectedRarity, setSelectedRarity] = useState("all");
   const [search, setSearch] = useState("");
 
-  // Ordenamiento y Paginación
-  const [sortBy, setSortBy] = useState("newest");
+  // ── Ordenamiento por defecto: precio mayor → menor ──
+  const [sortBy, setSortBy] = useState("price-desc");
   const [currentPage, setCurrentPage] = useState(1);
   const cardsPerPage = 12;
 
@@ -112,18 +112,10 @@ export default function CarpetaPublica() {
       if (search && !nameStr.includes(search.toLowerCase()) && !numStr.includes(search.toLowerCase())) {
         return false;
       }
-      if (expansion !== "all" && expStr !== expansion) {
-        return false;
-      }
-      if (selectedLang !== "all" && langStr !== selectedLang.toLowerCase()) {
-        return false;
-      }
-      if (selectedFoil !== "all" && foilStr !== selectedFoil.toLowerCase()) {
-        return false;
-      }
-      if (selectedRarity !== "all" && rarityStr !== selectedRarity.toLowerCase()) {
-        return false;
-      }
+      if (expansion !== "all" && expStr !== expansion) return false;
+      if (selectedLang !== "all" && langStr !== selectedLang.toLowerCase()) return false;
+      if (selectedFoil !== "all" && foilStr !== selectedFoil.toLowerCase()) return false;
+      if (selectedRarity !== "all" && rarityStr !== selectedRarity.toLowerCase()) return false;
       return true;
     });
 
@@ -300,12 +292,10 @@ export default function CarpetaPublica() {
       </section>
 
       <div className="mx-auto max-w-7xl space-y-8 p-4 md:p-6">
-        {/* Destacados (flotantes, con glow) */}
         <div className="float-slow">
           <FeaturedSlider />
         </div>
 
-        {/* Banner de ofertas/avisos */}
         <OfferBanner />
 
         <div ref={catalogRef} className="grid scroll-mt-20 grid-cols-1 gap-6 md:grid-cols-4">
@@ -318,10 +308,10 @@ export default function CarpetaPublica() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="w-full rounded-xl border border-kado-border bg-kado-bg/60 px-3 py-2 text-xs text-kado-text outline-none transition-all focus:border-kado focus:ring-1 focus:ring-kado"
               >
+                <option value="price-desc">📈 Precio: Mayor a Menor</option>
+                <option value="price-asc">📉 Precio: Menor a Mayor</option>
                 <option value="newest">✨ Más recientes</option>
                 <option value="name-asc">🔤 Nombre (A - Z)</option>
-                <option value="price-asc">📉 Precio: Menor a Mayor</option>
-                <option value="price-desc">📈 Precio: Mayor a Menor</option>
               </select>
             </div>
 
@@ -517,7 +507,6 @@ export default function CarpetaPublica() {
                           </div>
                         </div>
 
-                        {/* Barra de precio estilo "producto premium" */}
                         <div className="mt-3 flex items-center justify-between rounded-lg border border-kado-border bg-kado-bg/60 px-2.5 py-1.5">
                           <span className="font-mono text-sm font-extrabold text-kado-soft">
                             S/.{priceNum.toFixed(2)}
@@ -542,7 +531,6 @@ export default function CarpetaPublica() {
                   })}
                 </div>
 
-                {/* Controles de Paginación */}
                 {totalPages > 1 && (
                   <div className="flex items-center justify-center gap-2 pt-6">
                     <button
@@ -569,7 +557,6 @@ export default function CarpetaPublica() {
           </div>
         </div>
 
-        {/* Footer con Redes Sociales */}
         <footer className="mt-12 rounded-2xl border border-kado-border bg-kado-surface p-6 shadow-sm">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="text-center sm:text-left">
