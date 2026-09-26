@@ -263,8 +263,8 @@ export default function CarpetaPublica() {
         </div>
       </header>
 
-      {/* ===== HERO ===== */}
-      <section className="relative overflow-hidden">
+      {/* ===== HERO ===== 
+      ///<section className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,rgba(123,142,200,0.22),transparent_70%)]" />
         <div className="pointer-events-none absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-kado/20 blur-[100px]" />
 
@@ -289,7 +289,7 @@ export default function CarpetaPublica() {
             Explorar catálogo <ArrowRight size={15} />
           </button>
         </div>
-      </section>
+      </section>*/}
 
       <div className="mx-auto max-w-7xl space-y-8 p-4 md:p-6">
         <div className="float-slow">
