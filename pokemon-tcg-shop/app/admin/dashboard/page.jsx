@@ -16,7 +16,8 @@ import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import {
   Search, Plus, Minus, Trash2, Sparkles, Loader2, LogOut,
-  Package, ChevronLeft, ChevronRight, Star, Megaphone, Users, UserPlus, X
+  Package, ChevronLeft, ChevronRight, Star, Megaphone, Users, UserPlus, X,
+  Eye, EyeOff
 } from "lucide-react";
 
 const renderSafeText = (value) => {
@@ -61,6 +62,7 @@ export default function AdminStock() {
   // Filtros de inventario
   const [inventorySearch, setInventorySearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("todos");
+  const [visibilityFilter, setVisibilityFilter] = useState("todos"); // todos | visibles | ocultos
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 12;
 
@@ -77,6 +79,7 @@ export default function AdminStock() {
     rarity: "normal",
     hasStamp: false,
     featured: false,
+    hidden: false,
     owner: "Kado",
   });
 
@@ -157,6 +160,15 @@ export default function AdminStock() {
       await updateDoc(doc(db, "cards", cardId), { featured: !current });
     } catch (error) {
       console.error("Error actualizando destacado:", error);
+    }
+  };
+
+  // Mostrar / ocultar en la web pública
+  const handleToggleHidden = async (cardId, current) => {
+    try {
+      await updateDoc(doc(db, "cards", cardId), { hidden: !current });
+    } catch (error) {
+      console.error("Error actualizando visibilidad:", error);
     }
   };
 
@@ -323,6 +335,7 @@ export default function AdminStock() {
           stock: addStockCount,
           hasStamp: productStamp,
           featured: formData.featured || false,
+          hidden: formData.hidden || false,
           owner: productOwner,
           createdAt: new Date().toISOString(),
         };
@@ -343,6 +356,7 @@ export default function AdminStock() {
         rarity: "normal",
         hasStamp: false,
         featured: false,
+        hidden: false,
         owner: formData.owner, // mantiene el propietario seleccionado
       });
     } catch (error) {
@@ -394,9 +408,12 @@ export default function AdminStock() {
       const expansion = renderSafeText(c.expansion).toLowerCase();
       const matchesSearch = name.includes(query) || expansion.includes(query);
       const matchesOwner = ownerFilter === "todos" || (c.owner || "Kado") === ownerFilter;
-      return matchesSearch && matchesOwner;
+      const matchesVisibility =
+        visibilityFilter === "todos" ||
+        (visibilityFilter === "ocultos" ? c.hidden === true : c.hidden !== true);
+      return matchesSearch && matchesOwner && matchesVisibility;
     });
-  }, [cards, inventorySearch, ownerFilter]);
+  }, [cards, inventorySearch, ownerFilter, visibilityFilter]);
 
   // Conteo por propietario
   const ownerCounts = useMemo(() => {
@@ -789,6 +806,20 @@ export default function AdminStock() {
                     Destacado (aparece en el slider del home)
                   </label>
                 </div>
+
+                <div className="flex items-center gap-2 pt-2 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="hidden"
+                    checked={formData.hidden}
+                    onChange={(e) => setFormData({ ...formData, hidden: e.target.checked })}
+                    className="h-4 w-4 rounded border-kado text-kado-soft focus:ring-kado/40 cursor-pointer"
+                  />
+                  <label htmlFor="hidden" className="text-xs font-semibold text-kado-text cursor-pointer select-none flex items-center gap-1">
+                    <EyeOff size={12} className="text-kado-soft" />
+                    Ocultar en la web pública
+                  </label>
+                </div>
               </div>
 
               <button
@@ -923,6 +954,24 @@ export default function AdminStock() {
                 );
               })}
             </div>
+
+            {/* ── Filtro por visibilidad ── */}
+            <div className="flex flex-wrap gap-2">
+              {["todos", "visibles", "ocultos"].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => { setVisibilityFilter(v); setCurrentPage(1); }}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold capitalize transition-all cursor-pointer border ${
+                    visibilityFilter === v
+                      ? "bg-kado text-kado-bg border-kado"
+                      : "bg-kado-bg/60 text-kado-soft border-kado-border hover:border-kado/50"
+                  }`}
+                >
+                  {v === "ocultos" ? <EyeOff size={11} /> : <Eye size={11} />}
+                  {v}
+                </button>
+              ))}
+            </div>
           </div>
 
           {loadingCards ? (
@@ -936,18 +985,28 @@ export default function AdminStock() {
                   const isCard = !c.productType || c.productType === "carta";
                   const cardOwner = c.owner || "Kado";
                   const ownerColor = getOwnerColor(cardOwner);
+                  const isHidden = c.hidden === true;
 
                   return (
                     <div
                       key={c.id}
-                      className="flex flex-col justify-between rounded-xl border border-kado-border bg-kado-surface p-3 shadow-xs hover:border-kado transition-all"
+                      className={`flex flex-col justify-between rounded-xl border border-kado-border bg-kado-surface p-3 shadow-xs hover:border-kado transition-all ${
+                        isHidden ? "opacity-50" : ""
+                      }`}
                     >
                       {/* ── Etiqueta de propietario ── */}
                       <div className="flex items-center justify-between mb-2">
-                        <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${ownerColor.bg} ${ownerColor.text}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${ownerColor.dot}`} />
-                          {cardOwner}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${ownerColor.bg} ${ownerColor.text}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${ownerColor.dot}`} />
+                            {cardOwner}
+                          </span>
+                          {isHidden && (
+                            <span className="flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-300">
+                              <EyeOff size={10} /> Oculto
+                            </span>
+                          )}
+                        </div>
                         {c.featured && (
                           <Star size={11} className="text-kado-soft" fill="currentColor" />
                         )}
@@ -1060,6 +1119,18 @@ export default function AdminStock() {
                           >
                             <Star size={12} fill={c.featured ? "currentColor" : "none"} />
                             {c.featured ? "Destacado" : "Destacar"}
+                          </button>
+                          <button
+                            onClick={() => handleToggleHidden(c.id, isHidden)}
+                            title={isHidden ? "Oculto en la web: clic para mostrar" : "Visible en la web: clic para ocultar"}
+                            className={`flex flex-1 items-center justify-center gap-1 rounded py-1 text-[10px] font-semibold cursor-pointer transition-colors ${
+                              isHidden
+                                ? "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25"
+                                : "text-kado-muted hover:bg-kado-border/50"
+                            }`}
+                          >
+                            {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                            {isHidden ? "Oculto" : "Visible"}
                           </button>
                           <button
                             onClick={() => handleDeleteCard(c.id)}

@@ -22,6 +22,7 @@ interface Card {
   image?: any;
   hasStamp?: boolean;
   featured?: boolean;
+  hidden?: boolean;
 }
 
 const renderSafeText = (value: any): string => {
@@ -93,15 +94,18 @@ export default function CarpetaPublica() {
     return () => unsubscribe();
   }, []);
 
+  // ── Solo productos visibles (los marcados como hidden no se muestran) ──
+  const visibleCards = useMemo(() => cards.filter((c) => !c.hidden), [cards]);
+
   const availableExpansions = useMemo(() => {
-    const expansions = cards
+    const expansions = visibleCards
       .map((c) => renderSafeText(c.expansion))
       .filter((exp) => exp !== "");
     return Array.from(new Set(expansions));
-  }, [cards]);
+  }, [visibleCards]);
 
   const filteredCards = useMemo(() => {
-    let result = cards.filter((card) => {
+    let result = visibleCards.filter((card) => {
       const nameStr = renderSafeText(card.name).toLowerCase();
       const numStr = renderSafeText(card.cardNumber).toLowerCase();
       const expStr = renderSafeText(card.expansion);
@@ -133,7 +137,7 @@ export default function CarpetaPublica() {
     });
 
     return result;
-  }, [cards, search, expansion, selectedLang, selectedFoil, selectedRarity, sortBy]);
+  }, [visibleCards, search, expansion, selectedLang, selectedFoil, selectedRarity, sortBy]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -250,7 +254,7 @@ export default function CarpetaPublica() {
           <div className="flex shrink-0 items-center gap-2 md:gap-3">
             <span className="hidden items-center gap-1.5 rounded-full border border-kado-border bg-kado-bg/40 px-2.5 py-1 text-[11px] font-mono font-medium text-kado-soft lg:inline-flex">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              {cards.filter((c) => Number(c.stock) > 0).length} disponibles
+              {visibleCards.filter((c) => Number(c.stock) > 0).length} disponibles
             </span>
 
             <Link
